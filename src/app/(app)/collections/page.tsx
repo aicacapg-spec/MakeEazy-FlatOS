@@ -271,7 +271,27 @@ function GenerateDemandsModal({ flats, onClose, onSaved }: { flats: Flat[]; onCl
     const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null)
     const now = new Date()
     const [billingMonth, setBillingMonth] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`)
-    const [dueDate, setDueDate] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-05`)
+    const [dueDate, setDueDate] = useState('')
+    const [settingsLoaded, setSettingsLoaded] = useState(false)
+
+    // Load billing rules from org settings
+    useEffect(() => {
+        async function loadSettings() {
+            const supabase = createClient()
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user) return
+            const { data: profile } = await supabase.from('users').select('org_id').eq('id', user.id).single()
+            if (!profile?.org_id) return
+            const { data: org } = await supabase.from('organizations').select('settings').eq('id', profile.org_id).single()
+            const settings = (org?.settings as Record<string, unknown>) || {}
+            const rules = (settings.billing_rules as Record<string, number>) || {}
+            const dueDay = rules.rent_due_day || 5
+            setDueDate(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(dueDay).padStart(2, '0')}`)
+            setSettingsLoaded(true)
+        }
+        loadSettings()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
 
     const occupiedFlats = flats.filter(f => f.status === 'occupied')
 

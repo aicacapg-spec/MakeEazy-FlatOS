@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { SkeletonTable } from '@/lib/components/ui'
+import * as XLSX from 'xlsx'
 import type { Flat, Tenant, Agreement } from '@/lib/types/database'
 
 interface MonthlyData {
@@ -132,6 +133,107 @@ export default function ReportsPage() {
 
     const maxBarVal = Math.max(...monthlyData.map(m => Math.max(m.demanded, m.collected, m.expenses))) || 1
 
+    // ─── Export Functions ─────────────────────────────────────────
+    function exportMonthlyMIS(data: MonthlyData[]) {
+        const rows = data.map(m => ({
+            'Month': m.month,
+            'Demanded (₹)': m.demanded,
+            'Collected (₹)': m.collected,
+            'Expenses (₹)': m.expenses,
+            'Net Income (₹)': m.netIncome,
+            'Collection %': m.demanded > 0 ? Math.round((m.collected / m.demanded) * 100) + '%' : '—',
+        }))
+        const ws = XLSX.utils.json_to_sheet(rows)
+        ws['!cols'] = Object.keys(rows[0] || {}).map(() => ({ wch: 18 }))
+        const wb = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(wb, ws, 'Monthly MIS')
+        XLSX.writeFile(wb, `FlatOS_Monthly_MIS_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    }
+
+    function exportRentRoll(data: FlatReport[]) {
+        const rows = data.map(f => ({
+            'Flat': f.flat_number,
+            'Status': f.status,
+            'Annual Rent (₹)': f.annualRent,
+            'Collected (₹)': f.collected,
+            'Outstanding (₹)': f.outstanding,
+            'Collection Rate': f.collectionRate + '%',
+        }))
+        const ws = XLSX.utils.json_to_sheet(rows)
+        ws['!cols'] = Object.keys(rows[0] || {}).map(() => ({ wch: 18 }))
+        const wb = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(wb, ws, 'Rent Roll')
+        XLSX.writeFile(wb, `FlatOS_Rent_Roll_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    }
+
+    async function exportDepositRegister() {
+        const supabase = createClient()
+        const { data: authUser } = await supabase.auth.getUser()
+        if (!authUser.user) return
+        const { data: profile } = await supabase.from('users').select('org_id').eq('id', authUser.user.id).single()
+        if (!profile?.org_id) return
+
+        const [depRes, flatRes, tenRes] = await Promise.all([
+            supabase.from('deposits').select('*').eq('org_id', profile.org_id),
+            supabase.from('flats').select('id, flat_number').eq('org_id', profile.org_id),
+            supabase.from('tenants').select('id, full_name').eq('org_id', profile.org_id),
+        ])
+        const flatMap = new Map((flatRes.data || []).map(f => [f.id, f.flat_number]))
+        const tenMap = new Map((tenRes.data || []).map(t => [t.id, t.full_name]))
+
+        const rows = (depRes.data || []).map((d: Record<string, unknown>) => ({
+            'Flat': flatMap.get(d.flat_id as string) || d.flat_id,
+            'Tenant': tenMap.get(d.tenant_id as string) || d.tenant_id,
+            'Type': d.type,
+            'Amount (₹)': d.amount,
+            'Payment Mode': d.payment_mode,
+            'Date': d.date,
+            'Remarks': d.remarks || '',
+        }))
+        const ws = XLSX.utils.json_to_sheet(rows)
+        ws['!cols'] = Object.keys(rows[0] || {}).map(() => ({ wch: 18 }))
+        const wb = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(wb, ws, 'Deposit Register')
+        XLSX.writeFile(wb, `FlatOS_Deposit_Register_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    }
+
+    async function exportAgreementExpiry() {
+        const supabase = createClient()
+        const { data: authUser } = await supabase.auth.getUser()
+        if (!authUser.user) return
+        const { data: profile } = await supabase.from('users').select('org_id').eq('id', authUser.user.id).single()
+        if (!profile?.org_id) return
+
+        const [agrRes, flatRes, tenRes] = await Promise.all([
+            supabase.from('agreements').select('*').eq('org_id', profile.org_id).order('end_date'),
+            supabase.from('flats').select('id, flat_number').eq('org_id', profile.org_id),
+            supabase.from('tenants').select('id, full_name').eq('org_id', profile.org_id),
+        ])
+        const flatMap = new Map((flatRes.data || []).map(f => [f.id, f.flat_number]))
+        const tenMap = new Map((tenRes.data || []).map(t => [t.id, t.full_name]))
+
+        const rows = (agrRes.data || []).map((a: Record<string, unknown>) => {
+            const endDate = new Date(a.end_date as string)
+            const daysLeft = Math.ceil((endDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+            return {
+                'Flat': flatMap.get(a.flat_id as string) || '',
+                'Tenant': tenMap.get(a.tenant_id as string) || '',
+                'Type': a.agreement_type,
+                'Start': a.start_date,
+                'End': a.end_date,
+                'Days Left': daysLeft,
+                'Status': daysLeft < 0 ? 'EXPIRED' : daysLeft <= 30 ? 'EXPIRING SOON' : daysLeft <= 90 ? 'WITHIN 90 DAYS' : 'ACTIVE',
+                'Rent (₹)': a.rent_amount,
+                'Deposit (₹)': a.deposit_amount,
+            }
+        })
+        const ws = XLSX.utils.json_to_sheet(rows)
+        ws['!cols'] = Object.keys(rows[0] || {}).map(() => ({ wch: 18 }))
+        const wb = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(wb, ws, 'Agreement Expiry')
+        XLSX.writeFile(wb, `FlatOS_Agreement_Expiry_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    }
+
     return (
         <div>
             <div className="page-header">
@@ -139,8 +241,19 @@ export default function ReportsPage() {
                     <h1 className="page-title">Reports & Analytics</h1>
                     <p className="page-description">Financial summaries, collection trends, and flat-wise performance</p>
                 </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', textAlign: 'right' }}>
-                    All time · {new Date().toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button className="btn btn-ghost btn-sm" onClick={() => exportMonthlyMIS(monthlyData)} title="Export Monthly MIS">
+                        📊 MIS Export
+                    </button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => exportRentRoll(flatReports)} title="Export Rent Roll">
+                        🏠 Rent Roll
+                    </button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => exportDepositRegister()} title="Export Deposit Register">
+                        💰 Deposits
+                    </button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => exportAgreementExpiry()} title="Export Agreement Expiry">
+                        📋 Agreements
+                    </button>
                 </div>
             </div>
 

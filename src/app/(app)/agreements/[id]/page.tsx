@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { SkeletonPage } from '@/lib/components/ui'
 import type { Agreement, Flat, Tenant } from '@/lib/types/database'
 import { generateAgreementHTML } from '@/lib/templates/agreement-template'
+import { logAudit } from '@/lib/utils/audit'
 
 const STATUS_CONFIG: Record<string, { bg: string; color: string; label: string }> = {
     draft: { bg: '#f1f5f9', color: '#475569', label: 'Draft' },
@@ -89,10 +90,58 @@ export default function AgreementDetailPage() {
     }
 
     async function handleDelete() {
-        if (!confirm('Delete this agreement?')) return
+        if (!confirm('Delete this agreement? This cannot be undone.')) return
         const supabase = createClient()
+        await logAudit('delete', 'agreements', id)
         await supabase.from('agreements').delete().eq('id', id)
         router.push('/agreements')
+    }
+
+    // ─── Agreement Renewal ──────────────────────────────────
+    async function handleRenewal() {
+        if (!agreement) return
+        const escalation = agreement.escalation_percent || 5
+        const newRent = Math.round(agreement.rent_amount * (1 + escalation / 100))
+        const endDate = new Date(agreement.end_date)
+        const newStart = new Date(endDate)
+        newStart.setDate(newStart.getDate() + 1)
+        const newEnd = new Date(newStart)
+        newEnd.setMonth(newEnd.getMonth() + ((agreement as unknown as Record<string, number>).duration_months || 11))
+
+        if (!confirm(`Renew agreement?\n\n• New rent: ₹${newRent.toLocaleString('en-IN')} (+${escalation}%)\n• Start: ${newStart.toISOString().slice(0, 10)}\n• End: ${newEnd.toISOString().slice(0, 10)}\n\nThis will terminate the current agreement and create a new one.`)) return
+
+        setSaving(true)
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) { setSaving(false); return }
+        const { data: profile } = await supabase.from('users').select('org_id').eq('id', user.id).single()
+        if (!profile?.org_id) { setSaving(false); return }
+
+        // Terminate current
+        await supabase.from('agreements').update({ status: 'expired' }).eq('id', id)
+
+        // Create new
+        const { data: newAgr } = await supabase.from('agreements').insert({
+            org_id: profile.org_id,
+            flat_id: agreement.flat_id,
+            tenant_id: agreement.tenant_id,
+            agreement_type: agreement.agreement_type,
+            start_date: newStart.toISOString().slice(0, 10),
+            end_date: newEnd.toISOString().slice(0, 10),
+            rent_amount: newRent,
+            maintenance_amount: agreement.maintenance_amount,
+            deposit_amount: agreement.deposit_amount,
+            escalation_percent: escalation,
+            lock_in_months: agreement.lock_in_months,
+            notice_period_months: agreement.notice_period_months,
+            duration_months: (agreement as unknown as Record<string, number>).duration_months || 11,
+            status: 'draft',
+        }).select('id').single()
+
+        await logAudit('renew', 'agreements', id, { rent: agreement.rent_amount }, { rent: newRent, new_id: newAgr?.id })
+        setSaving(false)
+        if (newAgr?.id) router.push(`/agreements/${newAgr.id}`)
+        else loadData()
     }
 
     const fmt = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`
@@ -174,6 +223,11 @@ export default function AgreementDetailPage() {
                                 const w = window.open('', '_blank')
                                 if (w) { w.document.write(html); w.document.close() }
                             }}>📄 Generate Draft</button>
+                            {(agreement.status === 'signed' || agreement.status === 'registered' || agreement.status === 'expired') && (
+                                <button className="btn btn-secondary btn-sm" onClick={handleRenewal} disabled={saving}>
+                                    🔄 {saving ? 'Renewing...' : 'Renew'}
+                                </button>
+                            )}
                             <button className="btn btn-secondary btn-sm" onClick={() => setEditing(true)}>✏️ Edit</button>
                             <button className="btn btn-danger btn-sm" onClick={handleDelete}>🗑️ Delete</button>
                         </>

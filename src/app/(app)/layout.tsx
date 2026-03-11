@@ -28,19 +28,19 @@ export function useApp() {
 
 // ─── Sidebar Navigation Items ──────────────────────────────────────
 const NAV_ITEMS = [
-    { label: 'Dashboard', route: '/dashboard', icon: 'dashboard', section: 'main' },
-    { label: 'Flats', route: '/flats', icon: 'flats', section: 'main' },
-    { label: 'Tenants', route: '/tenants', icon: 'tenants', section: 'main' },
-    { label: 'Agreements', route: '/agreements', icon: 'agreements', section: 'main' },
-    { label: 'Collections', route: '/collections', icon: 'collections', section: 'finance' },
-    { label: 'Deposits', route: '/deposits', icon: 'deposits', section: 'finance' },
-    { label: 'Expenses', route: '/expenses', icon: 'expenses', section: 'finance' },
-    { label: 'Complaints', route: '/complaints', icon: 'complaints', section: 'operations' },
-    { label: 'Vendors', route: '/vendors', icon: 'vendors', section: 'operations' },
-    { label: 'Documents', route: '/documents', icon: 'documents', section: 'operations' },
-    { label: 'Compliance', route: '/compliance', icon: 'compliance', section: 'operations' },
-    { label: 'Reports', route: '/reports', icon: 'reports', section: 'reports' },
-    { label: 'Settings', route: '/settings', icon: 'settings', section: 'system' },
+    { label: 'Dashboard', route: '/dashboard', icon: 'dashboard', section: 'main', allowedRoles: ['super_admin','owner','admin','accountant','ca_reviewer','viewer'] },
+    { label: 'Flats', route: '/flats', icon: 'flats', section: 'main', allowedRoles: ['super_admin','owner','admin','accountant','ca_reviewer','viewer'] },
+    { label: 'Tenants', route: '/tenants', icon: 'tenants', section: 'main', allowedRoles: ['super_admin','owner','admin','accountant','ca_reviewer','viewer'] },
+    { label: 'Agreements', route: '/agreements', icon: 'agreements', section: 'main', allowedRoles: ['super_admin','owner','admin','accountant','ca_reviewer','viewer'] },
+    { label: 'Collections', route: '/collections', icon: 'collections', section: 'finance', allowedRoles: ['super_admin','owner','admin','accountant'] },
+    { label: 'Deposits', route: '/deposits', icon: 'deposits', section: 'finance', allowedRoles: ['super_admin','owner','admin','accountant'] },
+    { label: 'Expenses', route: '/expenses', icon: 'expenses', section: 'finance', allowedRoles: ['super_admin','owner','admin','accountant'] },
+    { label: 'Complaints', route: '/complaints', icon: 'complaints', section: 'operations', allowedRoles: ['super_admin','owner','admin','accountant','ca_reviewer','viewer'] },
+    { label: 'Vendors', route: '/vendors', icon: 'vendors', section: 'operations', allowedRoles: ['super_admin','owner','admin','accountant'] },
+    { label: 'Documents', route: '/documents', icon: 'documents', section: 'operations', allowedRoles: ['super_admin','owner','admin','accountant','ca_reviewer','viewer'] },
+    { label: 'Compliance', route: '/compliance', icon: 'compliance', section: 'operations', allowedRoles: ['super_admin','owner','admin','accountant','ca_reviewer','viewer'] },
+    { label: 'Reports', route: '/reports', icon: 'reports', section: 'reports', allowedRoles: ['super_admin','owner','admin','accountant','ca_reviewer'] },
+    { label: 'Settings', route: '/settings', icon: 'settings', section: 'system', allowedRoles: ['super_admin','owner','admin'] },
 ]
 
 // ─── SVG Icons ──────────────────────────────────────────────────────
@@ -268,7 +268,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
                         <nav className="sidebar-nav">
                             {sections.map(section => {
-                                const items = NAV_ITEMS.filter(i => i.section === section)
+                                const userRole = user?.role || 'viewer'
+                                const items = NAV_ITEMS.filter(i => i.section === section && i.allowedRoles.includes(userRole))
                                 if (items.length === 0) return null
                                 return (
                                     <div key={section}>

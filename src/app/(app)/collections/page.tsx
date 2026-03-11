@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import { SkeletonTable } from '@/lib/components/ui'
+import { logAudit } from '@/lib/utils/audit'
 import type { Flat } from '@/lib/types/database'
 
 interface RentDemand {
@@ -267,11 +268,37 @@ export default function CollectionsPage() {
 function GenerateDemandsModal({ flats, onClose, onSaved }: { flats: Flat[]; onClose: () => void; onSaved: () => void }) {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null)
     const now = new Date()
     const [billingMonth, setBillingMonth] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`)
     const [dueDate, setDueDate] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-05`)
 
     const occupiedFlats = flats.filter(f => f.status === 'occupied')
+
+    // Check for duplicates when billing month changes
+    useEffect(() => {
+        async function checkDuplicates() {
+            if (!billingMonth) return
+            const supabase = createClient()
+            const { data: existing } = await supabase
+                .from('rent_demands')
+                .select('flat_id')
+                .eq('billing_month', billingMonth)
+            if (existing && existing.length > 0) {
+                const existingFlatIds = new Set(existing.map(e => e.flat_id))
+                const dupes = occupiedFlats.filter(f => existingFlatIds.has(f.id))
+                if (dupes.length > 0) {
+                    setDuplicateWarning(`${dupes.length} flat(s) already have demands for ${billingMonth}. They will be skipped.`)
+                } else {
+                    setDuplicateWarning(null)
+                }
+            } else {
+                setDuplicateWarning(null)
+            }
+        }
+        checkDuplicates()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [billingMonth])
 
     async function handleGenerate() {
         setLoading(true)
@@ -282,21 +309,34 @@ function GenerateDemandsModal({ flats, onClose, onSaved }: { flats: Flat[]; onCl
         const { data: profile } = await supabase.from('users').select('org_id').eq('id', user.id).single()
         if (!profile?.org_id) { setError('No org'); setLoading(false); return }
 
-        const records = occupiedFlats.map(f => ({
+        // Check for existing demands to prevent duplicates
+        const { data: existing } = await supabase
+            .from('rent_demands')
+            .select('flat_id')
+            .eq('org_id', profile.org_id)
+            .eq('billing_month', billingMonth)
+        const existingFlatIds = new Set((existing || []).map(e => e.flat_id))
+
+        // Filter out flats that already have demands
+        const newFlats = occupiedFlats.filter(f => !existingFlatIds.has(f.id))
+
+        const records = newFlats.map(f => ({
             org_id: profile.org_id,
             flat_id: f.id,
             billing_month: billingMonth,
             rent_amount: f.monthly_rent || 0,
             maintenance_amount: f.monthly_maintenance || 0,
             late_fee: 0,
+            total_demand: (f.monthly_rent || 0) + (f.monthly_maintenance || 0),
             due_date: dueDate,
             status: 'pending',
         }))
 
-        if (records.length === 0) { setError('No occupied flats to generate demands for'); setLoading(false); return }
+        if (records.length === 0) { setError('No new demands to generate (all flats already have demands for this month)'); setLoading(false); return }
 
         const { error: err } = await supabase.from('rent_demands').insert(records)
         if (err) { setError(err.message); setLoading(false); return }
+        await logAudit('generate_demands', 'rent_demands', undefined, undefined, { billing_month: billingMonth, count: records.length })
         onSaved()
     }
 
@@ -334,6 +374,11 @@ function GenerateDemandsModal({ flats, onClose, onSaved }: { flats: Flat[]; onCl
                         )}
                     </div>
                 </div>
+                {duplicateWarning && (
+                    <div style={{ background: '#fffbeb', border: '1px solid #fbbf24', borderRadius: 8, padding: 12, marginBottom: 20, fontSize: 13, color: '#92400e' }}>
+                        ⚠️ {duplicateWarning}
+                    </div>
+                )}
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                     <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
                     <button className="btn btn-primary" disabled={loading || occupiedFlats.length === 0} onClick={handleGenerate}>
@@ -343,6 +388,31 @@ function GenerateDemandsModal({ flats, onClose, onSaved }: { flats: Flat[]; onCl
             </div>
         </div>
     )
+}
+
+// ─── FY Receipt Number Generator ──────────────────────────
+async function generateReceiptNumber(supabase: ReturnType<typeof createClient>, orgId: string): Promise<string> {
+    const now = new Date()
+    const fyStartYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1
+    const fyLabel = `${fyStartYear}-${String(fyStartYear + 1).slice(-2)}`
+    const prefix = `RCP/${fyLabel}/`
+
+    // Get latest receipt number for this FY
+    const { data } = await supabase
+        .from('payments')
+        .select('receipt_number')
+        .eq('org_id', orgId)
+        .like('receipt_number', `${prefix}%`)
+        .order('receipt_number', { ascending: false })
+        .limit(1)
+
+    let nextNum = 1
+    if (data && data.length > 0 && data[0].receipt_number) {
+        const lastNum = parseInt(data[0].receipt_number.replace(prefix, ''), 10)
+        if (!isNaN(lastNum)) nextNum = lastNum + 1
+    }
+
+    return `${prefix}${String(nextNum).padStart(4, '0')}`
 }
 
 // ─── Record Payment Modal ─────────────────────────────────
@@ -382,7 +452,7 @@ function RecordPaymentModal({ flats, demands, onClose, onSaved }: {
         const { data: profile } = await supabase.from('users').select('org_id').eq('id', user.id).single()
         if (!profile?.org_id) { setError('No org'); setLoading(false); return }
 
-        const receiptNum = `RCP-${Date.now().toString(36).toUpperCase()}`
+        const receiptNum = await generateReceiptNumber(supabase, profile.org_id)
 
         const { error: err } = await supabase.from('payments').insert({
             org_id: profile.org_id,

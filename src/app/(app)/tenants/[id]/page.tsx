@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { SkeletonPage } from '@/lib/components/ui'
 import { KYCPreviewModal } from '@/lib/components/bulk-operations'
+import { logAudit } from '@/lib/utils/audit'
 import type { Tenant, Flat, Agreement } from '@/lib/types/database'
 
 const KYC_CONFIG: Record<string, { bg: string; color: string; label: string }> = {
@@ -103,9 +104,45 @@ export default function TenantDetailPage() {
     async function handleDelete() {
         if (!confirm('Delete this tenant? This cannot be undone.')) return
         const supabase = createClient()
+        await logAudit('delete', 'tenants', tenantId, { full_name: tenant?.full_name })
         await supabase.from('tenants').delete().eq('id', tenantId)
         router.push('/tenants')
     }
+
+    // ─── Move-Out Workflow (atomic) ────────────────────────────
+    async function handleMoveOut() {
+        if (!confirm(`Move out ${tenant?.full_name}? This will:\n• Set tenant status → Moved Out\n• Set flat status → Vacant\n• Terminate active agreement\n\nContinue?`)) return
+        setSaving(true)
+        const supabase = createClient()
+        // 1. Tenant → moved_out
+        await supabase.from('tenants').update({ status: 'moved_out', move_out_date: new Date().toISOString().slice(0, 10) }).eq('id', tenantId)
+        // 2. Flat → vacant
+        if (tenant?.flat_id) {
+            await supabase.from('flats').update({ status: 'vacant', vacancy_since: new Date().toISOString() }).eq('id', tenant.flat_id)
+        }
+        // 3. Active agreements → terminated
+        const activeAgreements = agreements.filter(a => a.status === 'signed' || a.status === 'registered')
+        for (const agr of activeAgreements) {
+            await supabase.from('agreements').update({ status: 'terminated' }).eq('id', agr.id)
+        }
+        await logAudit('move_out', 'tenants', tenantId, { status: 'active' }, { status: 'moved_out' })
+        setSaving(false)
+        loadData()
+    }
+
+    // ─── Onboarding checklist computation ──────────────────────
+    const hasKYC = documents.length >= 2 // Aadhaar + PAN minimum
+    const hasAgreement = agreements.some(a => ['signed', 'registered'].includes(a.status))
+    const hasDeposit = false // Will check deposits in future
+    const hasMoveIn = !!tenant?.move_in_date
+    const onboardingSteps = [
+        { label: 'KYC Documents Uploaded', done: hasKYC, icon: '🪪' },
+        { label: 'Agreement Signed', done: hasAgreement, icon: '📋' },
+        { label: 'Security Deposit Received', done: hasDeposit, icon: '💰' },
+        { label: 'Move-in Date Set', done: hasMoveIn, icon: '🏠' },
+    ]
+    const onboardingProgress = onboardingSteps.filter(s => s.done).length
+    const autoKycStatus = hasKYC ? 'complete' : documents.length > 0 ? 'pending' : 'incomplete'
 
     const fmt = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`
 
@@ -151,6 +188,10 @@ export default function TenantDetailPage() {
                     {!editing ? (
                         <>
                             <button className="btn btn-secondary btn-sm" onClick={() => setEditing(true)}>✏️ Edit</button>
+                            {tenant.status === 'active' && (
+                                <button className="btn btn-ghost btn-sm" onClick={handleMoveOut} disabled={saving}
+                                    style={{ color: '#dc2626' }}>🚪 Move Out</button>
+                            )}
                             <button className="btn btn-danger btn-sm" onClick={handleDelete}>🗑️ Delete</button>
                         </>
                     ) : (
@@ -163,6 +204,32 @@ export default function TenantDetailPage() {
                     )}
                 </div>
             </div>
+
+            {/* Onboarding Checklist */}
+            {(tenant.status === 'onboarding' || tenant.status === 'active') && onboardingProgress < 4 && (
+                <div className="card" style={{ marginBottom: 20, padding: 16 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>🎯 Onboarding Progress</h3>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-primary)' }}>{onboardingProgress}/4 complete</span>
+                    </div>
+                    <div style={{ height: 6, background: '#e2e8f0', borderRadius: 3, marginBottom: 12 }}>
+                        <div style={{ height: '100%', borderRadius: 3, background: onboardingProgress === 4 ? '#10b981' : 'var(--color-primary)', width: `${(onboardingProgress / 4) * 100}%`, transition: 'width 0.3s' }} />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                        {onboardingSteps.map((step, i) => (
+                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 6, background: step.done ? '#ecfdf5' : '#f8fafc', fontSize: 13 }}>
+                                <span>{step.done ? '✅' : step.icon}</span>
+                                <span style={{ color: step.done ? '#059669' : 'var(--text-secondary)', fontWeight: step.done ? 600 : 400 }}>{step.label}</span>
+                            </div>
+                        ))}
+                    </div>
+                    {autoKycStatus !== tenant.kyc_status && (
+                        <div style={{ marginTop: 8, fontSize: 12, color: '#d97706' }}>
+                            ℹ️ KYC status auto-detected as <strong>{autoKycStatus}</strong> (currently set to {tenant.kyc_status})
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Tabs */}
             <div style={{ display: 'flex', borderBottom: '2px solid var(--border-color)', marginBottom: 24 }}>

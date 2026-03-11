@@ -16,6 +16,16 @@ interface CookieToSet {
     options: CookieOptions
 }
 
+// ─── Role-based route matrix ───────────────────────────────────
+const ROLE_ROUTES: Record<string, string[]> = {
+    // Routes restricted to specific roles — unlisted routes are accessible to all authenticated users
+    '/settings': ['owner', 'admin', 'super_admin'],
+    '/expenses': ['owner', 'admin', 'accountant', 'super_admin'],
+    '/collections': ['owner', 'admin', 'accountant', 'super_admin'],
+    '/deposits': ['owner', 'admin', 'accountant', 'super_admin'],
+    '/reports': ['owner', 'admin', 'accountant', 'ca_reviewer', 'super_admin'],
+}
+
 export async function updateSession(request: NextRequest) {
     // Gracefully pass through if Supabase env vars are not configured
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -77,6 +87,31 @@ export async function updateSession(request: NextRequest) {
         return NextResponse.redirect(url)
     }
 
+    // ─── Role-based route protection ───────────────────────────
+    if (user) {
+        const pathname = request.nextUrl.pathname
+        // Check if this route has role restrictions
+        for (const [route, allowedRoles] of Object.entries(ROLE_ROUTES)) {
+            if (pathname.startsWith(route)) {
+                // Fetch user role
+                const { data: profile } = await supabase
+                    .from('users')
+                    .select('role')
+                    .eq('id', user.id)
+                    .single()
+
+                const userRole = profile?.role || 'viewer'
+                if (!allowedRoles.includes(userRole)) {
+                    // Redirect unauthorized users to dashboard
+                    const url = request.nextUrl.clone()
+                    url.pathname = '/dashboard'
+                    url.searchParams.set('unauthorized', '1')
+                    return NextResponse.redirect(url)
+                }
+                break
+            }
+        }
+    }
+
     return supabaseResponse
 }
-

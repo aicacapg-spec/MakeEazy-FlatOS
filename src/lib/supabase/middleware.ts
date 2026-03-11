@@ -18,7 +18,6 @@ interface CookieToSet {
 
 // ─── Role-based route matrix ───────────────────────────────────
 const ROLE_ROUTES: Record<string, string[]> = {
-    // Routes restricted to specific roles — unlisted routes are accessible to all authenticated users
     '/settings': ['owner', 'admin', 'super_admin'],
     '/expenses': ['owner', 'admin', 'accountant', 'super_admin'],
     '/collections': ['owner', 'admin', 'accountant', 'super_admin'],
@@ -27,16 +26,13 @@ const ROLE_ROUTES: Record<string, string[]> = {
 }
 
 export async function updateSession(request: NextRequest) {
-    // Gracefully pass through if Supabase env vars are not configured
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
     if (!supabaseUrl || !supabaseAnonKey) {
         return NextResponse.next({ request })
     }
 
-    let supabaseResponse = NextResponse.next({
-        request,
-    })
+    let supabaseResponse = NextResponse.next({ request })
 
     const supabase = createServerClient(
         supabaseUrl,
@@ -48,9 +44,7 @@ export async function updateSession(request: NextRequest) {
                 },
                 setAll(cookiesToSet: CookieToSet[]) {
                     cookiesToSet.forEach(({ name, value }: CookieToSet) => request.cookies.set(name, value))
-                    supabaseResponse = NextResponse.next({
-                        request,
-                    })
+                    supabaseResponse = NextResponse.next({ request })
                     cookiesToSet.forEach(({ name, value, options }: CookieToSet) =>
                         supabaseResponse.cookies.set(name, value, options)
                     )
@@ -59,41 +53,53 @@ export async function updateSession(request: NextRequest) {
         }
     )
 
+    // IMPORTANT: Do NOT run any logic between createServerClient and getUser()
     const {
         data: { user },
     } = await supabase.auth.getUser()
 
-    // Public routes that don't require authentication
     const publicRoutes = ['/login', '/signup', '/forgot-password', '/auth/callback']
     const isPublicRoute = publicRoutes.some(route => request.nextUrl.pathname.startsWith(route))
 
+    // Not authenticated → redirect to login (but preserve cookies!)
     if (!user && !isPublicRoute) {
         const url = request.nextUrl.clone()
         url.pathname = '/login'
-        return NextResponse.redirect(url)
+        const redirectResponse = NextResponse.redirect(url)
+        // Copy cookies from supabaseResponse to the redirect response
+        supabaseResponse.cookies.getAll().forEach(cookie => {
+            redirectResponse.cookies.set(cookie.name, cookie.value)
+        })
+        return redirectResponse
     }
 
-    // If logged in and trying to access auth pages, redirect to dashboard
+    // Logged in but on auth page → redirect to dashboard
     if (user && isPublicRoute && !request.nextUrl.pathname.startsWith('/auth/callback')) {
         const url = request.nextUrl.clone()
         url.pathname = '/dashboard'
-        return NextResponse.redirect(url)
+        const redirectResponse = NextResponse.redirect(url)
+        supabaseResponse.cookies.getAll().forEach(cookie => {
+            redirectResponse.cookies.set(cookie.name, cookie.value)
+        })
+        return redirectResponse
     }
 
-    // Redirect root to dashboard
+    // Root → dashboard
     if (user && request.nextUrl.pathname === '/') {
         const url = request.nextUrl.clone()
         url.pathname = '/dashboard'
-        return NextResponse.redirect(url)
+        const redirectResponse = NextResponse.redirect(url)
+        supabaseResponse.cookies.getAll().forEach(cookie => {
+            redirectResponse.cookies.set(cookie.name, cookie.value)
+        })
+        return redirectResponse
     }
 
     // ─── Role-based route protection ───────────────────────────
     if (user) {
         const pathname = request.nextUrl.pathname
-        // Check if this route has role restrictions
         for (const [route, allowedRoles] of Object.entries(ROLE_ROUTES)) {
             if (pathname.startsWith(route)) {
-                // Fetch user role
                 const { data: profile } = await supabase
                     .from('users')
                     .select('role')
@@ -102,11 +108,14 @@ export async function updateSession(request: NextRequest) {
 
                 const userRole = profile?.role || 'viewer'
                 if (!allowedRoles.includes(userRole)) {
-                    // Redirect unauthorized users to dashboard
                     const url = request.nextUrl.clone()
                     url.pathname = '/dashboard'
                     url.searchParams.set('unauthorized', '1')
-                    return NextResponse.redirect(url)
+                    const redirectResponse = NextResponse.redirect(url)
+                    supabaseResponse.cookies.getAll().forEach(cookie => {
+                        redirectResponse.cookies.set(cookie.name, cookie.value)
+                    })
+                    return redirectResponse
                 }
                 break
             }

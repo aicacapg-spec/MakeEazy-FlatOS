@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { createFlatAction } from '@/app/actions/flats'
 import Link from 'next/link'
 import { SkeletonGrid } from '@/lib/components/ui'
 import { DownloadTemplateButton, ExportDataButton, BulkImportButton, MODULE_COLUMNS } from '@/lib/components/bulk-operations'
@@ -279,76 +280,23 @@ function AddFlatModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
         setLoading(true)
         setError(null)
 
-        const supabase = createClient()
-
-        // Get org_id and property_id (first org and property)
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) { setError('Not authenticated'); setLoading(false); return }
-
-        // Try to get user's org
-        const { data: profile } = await supabase.from('users').select('org_id').eq('id', user.id).single()
-        let orgId = profile?.org_id
-
-        // If no org exists, create one
-        if (!orgId) {
-            const { data: newOrg, error: orgError } = await supabase.from('organizations').insert({
-                name: user.user_metadata?.org_name || 'My Organization',
-                slug: 'my-org',
-                email: user.email,
-                status: 'active',
-                subscription_tier: 'free',
-            }).select('id').single()
-
-            if (orgError) { setError('Failed to create organization: ' + orgError.message); setLoading(false); return }
-            orgId = newOrg.id
-
-            // Create user profile
-            await supabase.from('users').insert({
-                id: user.id,
-                org_id: orgId,
-                email: user.email || '',
-                full_name: user.user_metadata?.full_name || 'Admin',
-                role: 'admin',
-                is_active: true,
-            })
-        }
-
-        // Ensure property exists
-        const { data: props } = await supabase.from('properties').select('id').eq('org_id', orgId).limit(1)
-        let propertyId = props?.[0]?.id
-
-        if (!propertyId) {
-            const { data: newProp, error: propError } = await supabase.from('properties').insert({
-                org_id: orgId,
-                name: 'Priya Mahalakshmi Towers',
-                address: 'Hyderabad',
-                city: 'Hyderabad',
-                total_units: 16,
-            }).select('id').single()
-
-            if (propError) { setError('Failed to create property: ' + propError.message); setLoading(false); return }
-            propertyId = newProp.id
-        }
-
-        const { error: insertError } = await supabase.from('flats').insert({
-            org_id: orgId,
-            property_id: propertyId,
+        const result = await createFlatAction({
             flat_number: form.flat_number,
-            floor: form.floor || null,
-            flat_type: form.flat_type || null,
-            carpet_area_sqft: form.carpet_area_sqft ? parseFloat(form.carpet_area_sqft) : null,
+            floor: form.floor,
+            flat_type: form.flat_type,
+            carpet_area_sqft: form.carpet_area_sqft,
             furnishing: form.furnishing,
-            ac_count: parseInt(form.ac_count) || 0,
-            parking: form.parking || null,
+            ac_count: form.ac_count,
+            parking: form.parking,
             owner_entity: form.owner_entity,
-            monthly_rent: parseFloat(form.monthly_rent) || 0,
-            monthly_maintenance: parseFloat(form.monthly_maintenance) || 0,
-            status: form.status as Flat['status'],
-            remarks: form.remarks || null,
+            monthly_rent: form.monthly_rent,
+            monthly_maintenance: form.monthly_maintenance,
+            status: form.status,
+            remarks: form.remarks,
         })
 
-        if (insertError) {
-            setError(insertError.message)
+        if (!result.success) {
+            setError(result.error || 'Failed to create flat')
             setLoading(false)
             return
         }

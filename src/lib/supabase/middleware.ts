@@ -23,6 +23,8 @@ const ROLE_ROUTES: Record<string, string[]> = {
     '/collections': ['owner', 'admin', 'accountant', 'super_admin'],
     '/deposits': ['owner', 'admin', 'accountant', 'super_admin'],
     '/reports': ['owner', 'admin', 'accountant', 'ca_reviewer', 'super_admin'],
+    '/compliance': ['owner', 'admin', 'super_admin'],
+    '/vendors': ['owner', 'admin', 'super_admin'],
 }
 
 export async function updateSession(request: NextRequest) {
@@ -109,8 +111,8 @@ export async function updateSession(request: NextRequest) {
                 const userRole = profile?.role || 'viewer'
                 if (!allowedRoles.includes(userRole)) {
                     const url = request.nextUrl.clone()
-                    url.pathname = '/dashboard'
-                    url.searchParams.set('unauthorized', '1')
+                    url.pathname = '/unauthorized'
+                    url.searchParams.delete('unauthorized')
                     const redirectResponse = NextResponse.redirect(url)
                     supabaseResponse.cookies.getAll().forEach(cookie => {
                         redirectResponse.cookies.set(cookie.name, cookie.value)

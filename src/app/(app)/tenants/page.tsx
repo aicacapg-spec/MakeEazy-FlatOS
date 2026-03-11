@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { getOrgId } from '@/lib/utils/get-org-id'
+import { createTenantAction } from '@/app/actions/tenants'
 import Link from 'next/link'
 import { SkeletonTable } from '@/lib/components/ui'
 import { DownloadTemplateButton, ExportDataButton, BulkImportButton, MODULE_COLUMNS } from '@/lib/components/bulk-operations'
@@ -247,31 +247,24 @@ function AddTenantModal({ flats, onClose, onSaved }: { flats: Flat[]; onClose: (
         setLoading(true)
         setError(null)
 
-        const supabase = createClient()
-        const orgId = await getOrgId(supabase)
-        if (!orgId) { setError('Organization not found'); setLoading(false); return }
-
-        const { error: insertError } = await supabase.from('tenants').insert({
-            org_id: orgId,
+        const result = await createTenantAction({
             full_name: form.full_name,
-            phone: form.phone || null,
-            email: form.email || null,
-            dob: form.dob || null,
-            employer_name: form.employer_name || null,
-            ctc_monthly: form.ctc_monthly ? parseFloat(form.ctc_monthly) : null,
-            emergency_contact_name: form.emergency_contact_name || null,
-            emergency_contact_phone: form.emergency_contact_phone || null,
-            flat_id: form.flat_id || null,
-            is_primary: form.is_primary === 'true',
-            rent_share: parseFloat(form.rent_share) || 100,
-            maint_share: parseFloat(form.maint_share) || 100,
-            move_in_date: form.move_in_date || null,
-            source: form.source || null,
-            status: form.flat_id ? 'active' : 'onboarding',
-            kyc_status: 'pending',
+            phone: form.phone,
+            email: form.email,
+            dob: form.dob,
+            employer_name: form.employer_name,
+            ctc_monthly: form.ctc_monthly,
+            emergency_contact_name: form.emergency_contact_name,
+            emergency_contact_phone: form.emergency_contact_phone,
+            flat_id: form.flat_id,
+            is_primary: form.is_primary,
+            rent_share: form.rent_share,
+            maint_share: form.maint_share,
+            move_in_date: form.move_in_date,
+            source: form.source,
         })
 
-        if (insertError) { setError(insertError.message); setLoading(false); return }
+        if (!result.success) { setError(result.error || 'Failed to create tenant'); setLoading(false); return }
         onSaved()
     }
 

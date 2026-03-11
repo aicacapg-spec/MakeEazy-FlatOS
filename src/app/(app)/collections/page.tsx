@@ -3,9 +3,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { getOrgId } from '@/lib/utils/get-org-id'
+import { generateRentDemandsAction, recordPaymentAction } from '@/app/actions/payments'
 import Link from 'next/link'
 import { SkeletonTable } from '@/lib/components/ui'
-import { logAudit } from '@/lib/utils/audit'
 import type { Flat } from '@/lib/types/database'
 
 interface RentDemand {
@@ -322,38 +322,17 @@ function GenerateDemandsModal({ flats, onClose, onSaved }: { flats: Flat[]; onCl
     async function handleGenerate() {
         setLoading(true)
         setError(null)
-        const supabase = createClient()
-        const orgId = await getOrgId(supabase)
-        if (!orgId) { setError('Organization not found'); setLoading(false); return }
 
-        // Check for existing demands to prevent duplicates
-        const { data: existing } = await supabase
-            .from('rent_demands')
-            .select('flat_id')
-            .eq('org_id', orgId)
-            .eq('billing_month', billingMonth)
-        const existingFlatIds = new Set((existing || []).map(e => e.flat_id))
+        const result = await generateRentDemandsAction(billingMonth, dueDate)
 
-        // Filter out flats that already have demands
-        const newFlats = occupiedFlats.filter(f => !existingFlatIds.has(f.id))
+        if (!result.success) { setError(result.error || 'Failed to generate demands'); setLoading(false); return }
 
-        const records = newFlats.map(f => ({
-            org_id: orgId,
-            flat_id: f.id,
-            billing_month: billingMonth,
-            rent_amount: f.monthly_rent || 0,
-            maintenance_amount: f.monthly_maintenance || 0,
-            late_fee: 0,
-            total_demand: (f.monthly_rent || 0) + (f.monthly_maintenance || 0),
-            due_date: dueDate,
-            status: 'pending',
-        }))
+        if (result.skipped && result.skipped > 0 && result.created === 0) {
+            setError(`All ${result.skipped} flat(s) already have demands for this month`)
+            setLoading(false)
+            return
+        }
 
-        if (records.length === 0) { setError('No new demands to generate (all flats already have demands for this month)'); setLoading(false); return }
-
-        const { error: err } = await supabase.from('rent_demands').insert(records)
-        if (err) { setError(err.message); setLoading(false); return }
-        await logAudit('generate_demands', 'rent_demands', undefined, undefined, { billing_month: billingMonth, count: records.length })
         onSaved()
     }
 
@@ -463,36 +442,20 @@ function RecordPaymentModal({ flats, demands, onClose, onSaved }: {
         e.preventDefault()
         setLoading(true)
         setError(null)
-        const supabase = createClient()
-        const orgId = await getOrgId(supabase)
-        if (!orgId) { setError('Organization not found'); setLoading(false); return }
 
-        const receiptNum = await generateReceiptNumber(supabase, orgId)
-
-        const { error: err } = await supabase.from('payments').insert({
-            org_id: orgId,
+        const result = await recordPaymentAction({
             flat_id: form.flat_id,
-            demand_id: form.demand_id || null,
-            receipt_number: receiptNum,
-            amount: parseFloat(form.amount) || 0,
+            demand_id: form.demand_id || undefined,
+            amount: form.amount,
             date: form.date,
             mode: form.mode,
-            reference_number: form.reference_number || null,
-            rent_component: parseFloat(form.rent_component) || 0,
-            maintenance_component: parseFloat(form.maintenance_component) || 0,
-            remarks: form.remarks || null,
+            reference_number: form.reference_number || undefined,
+            rent_component: form.rent_component,
+            maintenance_component: form.maintenance_component,
+            remarks: form.remarks || undefined,
         })
 
-        if (err) { setError(err.message); setLoading(false); return }
-
-        // Update demand status if linked
-        if (form.demand_id) {
-            const demand = demands.find(d => d.id === form.demand_id)
-            if (demand) {
-                const newStatus = parseFloat(form.amount) >= demand.total_demand ? 'paid' : 'partial'
-                await supabase.from('rent_demands').update({ status: newStatus }).eq('id', form.demand_id)
-            }
-        }
+        if (!result.success) { setError(result.error || 'Failed to record payment'); setLoading(false); return }
         onSaved()
     }
 

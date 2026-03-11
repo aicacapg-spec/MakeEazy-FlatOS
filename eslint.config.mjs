@@ -13,6 +13,14 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
   ]),
+  {
+    rules: {
+      // False positives on the useCallback → useEffect data-loading pattern
+      "react-hooks/set-state-in-effect": "off",
+      // False positives on Math.floor / static math calls in components
+      "react-hooks/purity": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;

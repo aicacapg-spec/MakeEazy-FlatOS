@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { getOrgId } from '@/lib/utils/get-org-id'
+import { verifyDocumentAction } from '@/app/actions/documents'
 import Link from 'next/link'
 import { SkeletonTable } from '@/lib/components/ui'
 import type { Flat, Tenant } from '@/lib/types/database'
@@ -173,7 +174,18 @@ export default function DocumentsPage() {
                                                 {new Date(d.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
                                             </td>
                                             <td>
-                                                <a href={d.file_url} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm">View ↗</a>
+                                                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                                    <a href={`/api/documents/signed-url?path=${encodeURIComponent(d.file_url.includes('/storage/') ? d.file_url.split('/storage/v1/object/public/documents/')[1] || d.file_url : d.file_url)}`}
+                                                        target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm">View ↗</a>
+                                                    {!d.is_verified && (
+                                                        <button className="btn btn-ghost btn-sm" style={{ color: '#059669' }}
+                                                            onClick={async () => {
+                                                                const r = await verifyDocumentAction(d.id)
+                                                                if (r.success) loadData()
+                                                            }}
+                                                        >✓ Verify</button>
+                                                    )}
+                                                </div>
                                             </td>
                                         </tr>
                                     )

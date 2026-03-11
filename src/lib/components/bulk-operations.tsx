@@ -306,7 +306,7 @@ export function KYCPreviewModal({ document, tenantName, onClose }: {
     const isAadhaar = document.file_name.toLowerCase().includes('aadhaar')
     const isPan = document.file_name.toLowerCase().includes('pan')
     const docLabel = isAadhaar ? 'Aadhaar Card' : isPan ? 'PAN Card' : document.doc_type
-    const dummyNumber = isAadhaar ? 'XXXX XXXX ' + Math.floor(1000 + Math.random() * 9000) : isPan ? 'ABCDE' + Math.floor(1000 + Math.random() * 9000) + 'F' : ''
+    const dummyNumber = isAadhaar ? 'XXXX XXXX 1234' : isPan ? 'ABCDE1234F' : ''
 
     return (
         <div className="modal-overlay" onClick={onClose}>

@@ -38,87 +38,86 @@ export default function DashboardPage() {
 
     useEffect(() => {
         async function loadDashboard() {
-            const supabase = createClient()
-            const { data: authUser } = await supabase.auth.getUser()
-            if (!authUser.user) return
+            try {
+                const supabase = createClient()
 
-            const { data: profile } = await supabase.from('users').select('org_id').eq('id', authUser.user.id).single()
-            if (!profile?.org_id) { setLoading(false); return }
-            const orgId = profile.org_id
+                // Load all data in parallel — RLS handles org scoping
+                const [flatsRes, tenantsRes, agreementsRes, demandsRes, paymentsRes] = await Promise.all([
+                    supabase.from('flats').select('id, flat_number, status, monthly_rent, monthly_maintenance'),
+                    supabase.from('tenants').select('id, full_name, status, kyc_status, flat_id'),
+                    supabase.from('agreements').select('id, flat_id, end_date, status, tenant_id').in('status', ['signed', 'registered']),
+                    supabase.from('rent_demands').select('id, flat_id, total_demand, status, billing_month'),
+                    supabase.from('payments').select('id, flat_id, amount, date, mode').order('date', { ascending: false }).limit(5),
+                ])
 
-            // Load all data in parallel
-            const [flatsRes, tenantsRes, agreementsRes, demandsRes, paymentsRes] = await Promise.all([
-                supabase.from('flats').select('id, flat_number, status, monthly_rent, monthly_maintenance').eq('org_id', orgId),
-                supabase.from('tenants').select('id, full_name, status, kyc_status, flat_id').eq('org_id', orgId),
-                supabase.from('agreements').select('id, flat_id, end_date, status, tenant_id').eq('org_id', orgId).in('status', ['signed', 'registered']),
-                supabase.from('rent_demands').select('id, flat_id, total_demand, status, billing_month').eq('org_id', orgId),
-                supabase.from('payments').select('id, flat_id, amount, date, mode').eq('org_id', orgId).order('date', { ascending: false }).limit(5),
-            ])
+                const flats = flatsRes.data || []
+                const tenants = tenantsRes.data || []
+                const agreements = agreementsRes.data || []
+                const demands = demandsRes.data || []
+                const payments = paymentsRes.data || []
 
-            const flats = flatsRes.data || []
-            const tenants = tenantsRes.data || []
-            const agreements = agreementsRes.data || []
-            const demands = demandsRes.data || []
-            const payments = paymentsRes.data || []
+                // Flat stats
+                const totalFlats = flats.length
+                const occupied = flats.filter(f => f.status === 'occupied').length
+                const vacant = flats.filter(f => f.status === 'vacant').length
+                const office = flats.filter(f => f.status === 'office').length
 
-            // Flat stats
-            const totalFlats = flats.length
-            const occupied = flats.filter(f => f.status === 'occupied').length
-            const vacant = flats.filter(f => f.status === 'vacant').length
-            const office = flats.filter(f => f.status === 'office').length
+                // Tenant stats
+                const activeTenants = tenants.filter(t => t.status === 'active').length
+                const kycPending = tenants.filter(t => t.kyc_status !== 'complete' && t.status === 'active').length
 
-            // Tenant stats
-            const activeTenants = tenants.filter(t => t.status === 'active').length
-            const kycPending = tenants.filter(t => t.kyc_status !== 'complete' && t.status === 'active').length
+                // Monthly financial stats
+                const now = new Date()
+                const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+                const monthDemands = demands.filter(d => d.billing_month === currentMonth)
+                const thisMonthExpected = monthDemands.reduce((s, d) => s + (d.total_demand || 0), 0)
 
-            // Monthly financial stats
-            const now = new Date()
-            const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-            const monthDemands = demands.filter(d => d.billing_month === currentMonth)
-            const thisMonthExpected = monthDemands.reduce((s, d) => s + (d.total_demand || 0), 0)
+                const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+                const monthPayments = payments.filter(p => new Date(p.date) >= monthStart)
+                const thisMonthCollected = monthPayments.reduce((s, p) => s + p.amount, 0)
 
-            const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-            const monthPayments = payments.filter(p => new Date(p.date) >= monthStart)
-            const thisMonthCollected = monthPayments.reduce((s, p) => s + p.amount, 0)
+                // Outstanding
+                const pendingDemands = demands.filter(d => d.status === 'pending' || d.status === 'partial' || d.status === 'overdue')
+                const outstanding = pendingDemands.reduce((s, d) => s + (d.total_demand || 0), 0)
+                const overdueCount = demands.filter(d => d.status === 'overdue').length
 
-            // Outstanding
-            const pendingDemands = demands.filter(d => d.status === 'pending' || d.status === 'partial' || d.status === 'overdue')
-            const outstanding = pendingDemands.reduce((s, d) => s + (d.total_demand || 0), 0)
-            const overdueCount = demands.filter(d => d.status === 'overdue').length
+                // Expiring agreements
+                const flatMap = new Map(flats.map(f => [f.id, f.flat_number]))
+                const tenantMap = new Map(tenants.map(t => [t.id, t.full_name]))
+                const expiringSoon = agreements
+                    .map(a => {
+                        const days = Math.ceil((new Date(a.end_date).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+                        return {
+                            flat_number: flatMap.get(a.flat_id) || '—',
+                            days,
+                            tenant_name: a.tenant_id ? tenantMap.get(a.tenant_id) || '—' : '—',
+                        }
+                    })
+                    .filter(a => a.days <= 60)
+                    .sort((a, b) => a.days - b.days)
+                    .slice(0, 4)
 
-            // Expiring agreements
-            const flatMap = new Map(flats.map(f => [f.id, f.flat_number]))
-            const tenantMap = new Map(tenants.map(t => [t.id, t.full_name]))
-            const expiringSoon = agreements
-                .map(a => {
-                    const days = Math.ceil((new Date(a.end_date).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-                    return {
-                        flat_number: flatMap.get(a.flat_id) || '—',
-                        days,
-                        tenant_name: a.tenant_id ? tenantMap.get(a.tenant_id) || '—' : '—',
-                    }
+                // Recent payments
+                const recentPayments = payments.slice(0, 5).map(p => ({
+                    flat_number: flatMap.get(p.flat_id) || '—',
+                    amount: p.amount,
+                    date: p.date,
+                    mode: p.mode,
+                }))
+
+                // Flat status grid
+                const flatsData = flats.map(f => ({ flat_number: f.flat_number, status: f.status, id: f.id }))
+
+                setStats({
+                    totalFlats, occupied, vacant, office, activeTenants, kycPendingCount: kycPending,
+                    thisMonthCollected, thisMonthExpected, outstanding, overdueCount,
+                    expiringSoon, recentPayments, flatsData,
                 })
-                .filter(a => a.days <= 60)
-                .sort((a, b) => a.days - b.days)
-                .slice(0, 4)
-
-            // Recent payments
-            const recentPayments = payments.slice(0, 5).map(p => ({
-                flat_number: flatMap.get(p.flat_id) || '—',
-                amount: p.amount,
-                date: p.date,
-                mode: p.mode,
-            }))
-
-            // Flat status grid
-            const flatsData = flats.map(f => ({ flat_number: f.flat_number, status: f.status, id: f.id }))
-
-            setStats({
-                totalFlats, occupied, vacant, office, activeTenants, kycPendingCount: kycPending,
-                thisMonthCollected, thisMonthExpected, outstanding, overdueCount,
-                expiringSoon, recentPayments, flatsData,
-            })
-            setLoading(false)
+            } catch (err) {
+                console.error('[FlatOS] Dashboard load error:', err)
+            } finally {
+                setLoading(false)
+            }
         }
         loadDashboard()
     }, [])

@@ -185,10 +185,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     .single()
                 if (org) setOrgName(org.name)
             } else {
-                // Fallback: use auth metadata
+                // Fallback: no profile found — get org from organizations table
+                const { data: orgData } = await supabase
+                    .from('organizations')
+                    .select('id, name')
+                    .limit(1)
+                    .single()
+
+                const orgId = orgData?.id || ''
+                const orgDisplayName = orgData?.name || authUser.user_metadata?.org_name || 'My Organization'
+
                 setUser({
                     id: authUser.id,
-                    org_id: '',
+                    org_id: orgId,
                     email: authUser.email || '',
                     full_name: authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'User',
                     phone: null,
@@ -199,7 +208,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     created_at: authUser.created_at,
                     updated_at: authUser.created_at,
                 })
-                setOrgName(authUser.user_metadata?.org_name || 'My Organization')
+                setOrgName(orgDisplayName)
             }
         } catch (err) {
             console.error('[FlatOS] Error loading user profile:', err)

@@ -32,28 +32,39 @@ export default function SettingsPage() {
 
     const loadData = useCallback(async () => {
         setLoading(true)
-        const supabase = createClient()
-        const { data: { user: authUser } } = await supabase.auth.getUser()
-        if (!authUser) { setLoading(false); return }
+        try {
+            const supabase = createClient()
+            const { data: { user: authUser } } = await supabase.auth.getUser()
+            if (!authUser) { setLoading(false); return }
 
-        const { data: profile } = await supabase.from('users').select('org_id').eq('id', authUser.id).single()
-        if (!profile?.org_id) { setLoading(false); return }
+            // Try user profile first, fallback to first org
+            const { data: profile } = await supabase.from('users').select('org_id').eq('id', authUser.id).single()
+            let orgId = profile?.org_id
+            if (!orgId) {
+                const { data: firstOrg } = await supabase.from('organizations').select('id').limit(1).single()
+                orgId = firstOrg?.id
+            }
+            if (!orgId) { setLoading(false); return }
 
-        const [orgRes, usersRes] = await Promise.all([
-            supabase.from('organizations').select('*').eq('id', profile.org_id).single(),
-            supabase.from('users').select('*').eq('org_id', profile.org_id).order('created_at'),
-        ])
+            const [orgRes, usersRes] = await Promise.all([
+                supabase.from('organizations').select('*').eq('id', orgId).single(),
+                supabase.from('users').select('*').eq('org_id', orgId).order('created_at'),
+            ])
 
-        if (orgRes.data) {
-            setOrg(orgRes.data as Organization)
-            const s = (orgRes.data as Organization).settings as Record<string, unknown> || {}
-            setBillingRules(prev => ({
-                ...prev,
-                ...(s.billing_rules as Record<string, unknown> || {}),
-            }))
+            if (orgRes.data) {
+                setOrg(orgRes.data as Organization)
+                const s = (orgRes.data as Organization).settings as Record<string, unknown> || {}
+                setBillingRules(prev => ({
+                    ...prev,
+                    ...(s.billing_rules as Record<string, unknown> || {}),
+                }))
+            }
+            setUsers(usersRes.data as UserProfile[] || [])
+        } catch (err) {
+            console.error('[FlatOS] Settings load error:', err)
+        } finally {
+            setLoading(false)
         }
-        setUsers(usersRes.data as UserProfile[] || [])
-        setLoading(false)
     }, [])
 
     useEffect(() => { loadData() }, [loadData])

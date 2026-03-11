@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { getOrgId } from '@/lib/utils/get-org-id'
 import Link from 'next/link'
 import { SkeletonTable } from '@/lib/components/ui'
 import { DownloadTemplateButton, ExportDataButton, BulkImportButton, MODULE_COLUMNS } from '@/lib/components/bulk-operations'
@@ -162,12 +163,10 @@ function DepositForm({ flats, tenants, onClose, onSaved }: { flats: Flat[]; tena
         e.preventDefault()
         setLoading(true)
         const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) { setError('Not authenticated'); setLoading(false); return }
-        const { data: profile } = await supabase.from('users').select('org_id').eq('id', user.id).single()
-        if (!profile?.org_id) { setError('No org'); setLoading(false); return }
+        const orgId = await getOrgId(supabase)
+        if (!orgId) { setError('Organization not found'); setLoading(false); return }
         const { error: err } = await supabase.from('deposits').insert({
-            org_id: profile.org_id, flat_id: form.flat_id, tenant_id: form.tenant_id || null,
+            org_id: orgId, flat_id: form.flat_id, tenant_id: form.tenant_id || null,
             type: form.type, amount: parseFloat(form.amount), mode: form.mode,
             reference_number: form.reference_number || null, date: form.date, remarks: form.remarks || null,
         })

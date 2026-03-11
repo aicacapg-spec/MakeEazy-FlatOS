@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { getOrgId } from '@/lib/utils/get-org-id'
 import Link from 'next/link'
 import { SkeletonTable } from '@/lib/components/ui'
 import { DownloadTemplateButton, ExportDataButton, BulkImportButton, MODULE_COLUMNS } from '@/lib/components/bulk-operations'
@@ -174,13 +175,11 @@ function ComplaintForm({ flats, onClose, onSaved }: { flats: Flat[]; onClose: ()
         e.preventDefault()
         setLoading(true)
         const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) { setError('Not authenticated'); setLoading(false); return }
-        const { data: profile } = await supabase.from('users').select('org_id').eq('id', user.id).single()
-        if (!profile?.org_id) { setError('No org'); setLoading(false); return }
+        const orgId = await getOrgId(supabase)
+        if (!orgId) { setError('Organization not found'); setLoading(false); return }
         const num = `CMP-${Date.now().toString(36).toUpperCase()}`
         const { error: err } = await supabase.from('complaints').insert({
-            org_id: profile.org_id, flat_id: form.flat_id || null, complaint_number: num,
+            org_id: orgId, flat_id: form.flat_id || null, complaint_number: num,
             category: form.category, description: form.description || null, priority: form.priority,
             reported_by: form.reported_by || null, date: form.date, status: 'open',
         })

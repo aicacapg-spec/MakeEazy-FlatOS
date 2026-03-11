@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { getOrgId } from '@/lib/utils/get-org-id'
 import { SkeletonTable } from '@/lib/components/ui'
 import * as XLSX from 'xlsx'
 import type { Flat, Tenant, Agreement } from '@/lib/types/database'
@@ -38,88 +39,89 @@ export default function ReportsPage() {
     useEffect(() => {
         async function loadReports() {
             setLoading(true)
-            const supabase = createClient()
-            const { data: authUser } = await supabase.auth.getUser()
-            if (!authUser.user) return
-            const { data: profile } = await supabase.from('users').select('org_id').eq('id', authUser.user.id).single()
-            if (!profile?.org_id) { setLoading(false); return }
-            const orgId = profile.org_id
+            try {
+                const supabase = createClient()
+                const orgId = await getOrgId(supabase)
+                if (!orgId) return
 
-            const [flatRes, payRes, demRes, expRes, depRes] = await Promise.all([
-                supabase.from('flats').select('id, flat_number, status, monthly_rent, monthly_maintenance').eq('org_id', orgId),
-                supabase.from('payments').select('amount, date, flat_id').eq('org_id', orgId),
-                supabase.from('rent_demands').select('flat_id, billing_month, total_demand, status').eq('org_id', orgId),
-                supabase.from('expenses').select('amount, date').eq('org_id', orgId),
-                supabase.from('deposits').select('amount, type').eq('org_id', orgId),
-            ])
+                const [flatRes, payRes, demRes, expRes, depRes] = await Promise.all([
+                    supabase.from('flats').select('id, flat_number, status, monthly_rent, monthly_maintenance'),
+                    supabase.from('payments').select('amount, date, flat_id'),
+                    supabase.from('rent_demands').select('flat_id, billing_month, total_demand, status'),
+                    supabase.from('expenses').select('amount, date'),
+                    supabase.from('deposits').select('amount, type'),
+                ])
 
-            const flats = flatRes.data || []
-            const payments = payRes.data || []
-            const demands = demRes.data || []
-            const expenses = expRes.data || []
-            const deposits = depRes.data || []
+                const flats = flatRes.data || []
+                const payments = payRes.data || []
+                const demands = demRes.data || []
+                const expenses = expRes.data || []
+                const deposits = depRes.data || []
 
-            // Monthly aggregation — last 12 months
-            const months: MonthlyData[] = []
-            for (let i = 11; i >= 0; i--) {
-                const d = new Date()
-                d.setMonth(d.getMonth() - i)
-                const monthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-                const monthStart = new Date(d.getFullYear(), d.getMonth(), 1)
-                const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0)
+                // Monthly aggregation — last 12 months
+                const months: MonthlyData[] = []
+                for (let i = 11; i >= 0; i--) {
+                    const d = new Date()
+                    d.setMonth(d.getMonth() - i)
+                    const monthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+                    const monthStart = new Date(d.getFullYear(), d.getMonth(), 1)
+                    const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0)
 
-                const demanded = demands.filter(x => x.billing_month === monthStr).reduce((s, x) => s + (x.total_demand || 0), 0)
-                const collected = payments.filter(p => {
-                    const pd = new Date(p.date)
-                    return pd >= monthStart && pd <= monthEnd
-                }).reduce((s, p) => s + p.amount, 0)
-                const exp = expenses.filter(e => {
-                    const ed = new Date(e.date)
-                    return ed >= monthStart && ed <= monthEnd
-                }).reduce((s, e) => s + e.amount, 0)
+                    const demanded = demands.filter(x => x.billing_month === monthStr).reduce((s, x) => s + (x.total_demand || 0), 0)
+                    const collected = payments.filter(p => {
+                        const pd = new Date(p.date)
+                        return pd >= monthStart && pd <= monthEnd
+                    }).reduce((s, p) => s + p.amount, 0)
+                    const exp = expenses.filter(e => {
+                        const ed = new Date(e.date)
+                        return ed >= monthStart && ed <= monthEnd
+                    }).reduce((s, e) => s + e.amount, 0)
 
-                months.push({
-                    month: d.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' }),
-                    demanded, collected, expenses: exp, netIncome: collected - exp,
-                })
-            }
-            setMonthlyData(months)
-
-            // Flat-wise report
-            const flatColumns: FlatReport[] = flats.map(f => {
-                const flatDemands = demands.filter(d => d.flat_id === f.id)
-                const flatPayments = payments.filter(p => p.flat_id === f.id)
-                const totalDemanded = flatDemands.reduce((s, d) => s + (d.total_demand || 0), 0)
-                const totalCollected = flatPayments.reduce((s, p) => s + p.amount, 0)
-                const outstanding = Math.max(0, totalDemanded - totalCollected)
-                return {
-                    flat_number: f.flat_number,
-                    status: f.status,
-                    annualRent: (f.monthly_rent || 0) * 12,
-                    collected: totalCollected,
-                    outstanding,
-                    collectionRate: totalDemanded > 0 ? Math.round((totalCollected / totalDemanded) * 100) : 0,
+                    months.push({
+                        month: d.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' }),
+                        demanded, collected, expenses: exp, netIncome: collected - exp,
+                    })
                 }
-            }).sort((a, b) => b.collected - a.collected)
-            setFlatReports(flatColumns)
+                setMonthlyData(months)
 
-            // Summary totals
-            const totalRevenue = payments.reduce((s, p) => s + p.amount, 0)
-            const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0)
-            const depositsHeld = deposits.filter(d => d.type === 'initial' || d.type === 'additional').reduce((s, d) => s + d.amount, 0)
-            const depositsRefunded = deposits.filter(d => d.type === 'refund').reduce((s, d) => s + d.amount, 0)
-            const pendingDemands = demands.filter(d => d.status === 'pending' || d.status === 'partial' || d.status === 'overdue')
-            const totalOutstanding = pendingDemands.reduce((s, d) => s + (d.total_demand || 0), 0)
+                // Flat-wise report
+                const flatColumns: FlatReport[] = flats.map(f => {
+                    const flatDemands = demands.filter(d => d.flat_id === f.id)
+                    const flatPayments = payments.filter(p => p.flat_id === f.id)
+                    const totalDemanded = flatDemands.reduce((s, d) => s + (d.total_demand || 0), 0)
+                    const totalCollected = flatPayments.reduce((s, p) => s + p.amount, 0)
+                    const outstanding = Math.max(0, totalDemanded - totalCollected)
+                    return {
+                        flat_number: f.flat_number,
+                        status: f.status,
+                        annualRent: (f.monthly_rent || 0) * 12,
+                        collected: totalCollected,
+                        outstanding,
+                        collectionRate: totalDemanded > 0 ? Math.round((totalCollected / totalDemanded) * 100) : 0,
+                    }
+                }).sort((a, b) => b.collected - a.collected)
+                setFlatReports(flatColumns)
 
-            setSummary({
-                totalRevenue, totalExpenses, netIncome: totalRevenue - totalExpenses,
-                totalDepositsHeld: depositsHeld - depositsRefunded,
-                totalOutstanding,
-                occupiedFlats: flats.filter(f => f.status === 'occupied').length,
-                vacantFlats: flats.filter(f => f.status === 'vacant').length,
-            })
+                // Summary totals
+                const totalRevenue = payments.reduce((s, p) => s + p.amount, 0)
+                const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0)
+                const depositsHeld = deposits.filter(d => d.type === 'initial' || d.type === 'additional').reduce((s, d) => s + d.amount, 0)
+                const depositsRefunded = deposits.filter(d => d.type === 'refund').reduce((s, d) => s + d.amount, 0)
+                const pendingDemands = demands.filter(d => d.status === 'pending' || d.status === 'partial' || d.status === 'overdue')
+                const totalOutstanding = pendingDemands.reduce((s, d) => s + (d.total_demand || 0), 0)
 
-            setLoading(false)
+                setSummary({
+                    totalRevenue, totalExpenses, netIncome: totalRevenue - totalExpenses,
+                    totalDepositsHeld: depositsHeld - depositsRefunded,
+                    totalOutstanding,
+                    occupiedFlats: flats.filter(f => f.status === 'occupied').length,
+                    vacantFlats: flats.filter(f => f.status === 'vacant').length,
+                })
+            } catch (err) {
+                console.error('[FlatOS] Reports load error:', err)
+            } finally {
+                setLoading(false)
+            }
         }
         loadReports()
     }, [])

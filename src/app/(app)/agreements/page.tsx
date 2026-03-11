@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { getOrgId } from '@/lib/utils/get-org-id'
 import Link from 'next/link'
 import { SkeletonTable } from '@/lib/components/ui'
 import { DownloadTemplateButton, ExportDataButton, BulkImportButton, MODULE_COLUMNS } from '@/lib/components/bulk-operations'
@@ -305,14 +306,11 @@ function AddAgreementModal({ flats, tenants, onClose, onSaved }: {
         setError(null)
 
         const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) { setError('Not authenticated'); setLoading(false); return }
-
-        const { data: profile } = await supabase.from('users').select('org_id').eq('id', user.id).single()
-        if (!profile?.org_id) { setError('Organization not found'); setLoading(false); return }
+        const orgId = await getOrgId(supabase)
+        if (!orgId) { setError('Organization not found'); setLoading(false); return }
 
         const { error: err } = await supabase.from('agreements').insert({
-            org_id: profile.org_id,
+            org_id: orgId,
             flat_id: form.flat_id,
             tenant_id: form.tenant_id || null,
             agreement_type: form.agreement_type,

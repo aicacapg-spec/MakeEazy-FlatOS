@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { getOrgId } from '@/lib/utils/get-org-id'
 import { SkeletonTable } from '@/lib/components/ui'
 import { DownloadTemplateButton, ExportDataButton, BulkImportButton, MODULE_COLUMNS } from '@/lib/components/bulk-operations'
 
@@ -54,11 +55,9 @@ export default function CompliancePage() {
     async function seedDefaults() {
         setSeeding(true)
         const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) { setSeeding(false); return }
-        const { data: profile } = await supabase.from('users').select('org_id').eq('id', user.id).single()
-        if (!profile?.org_id) { setSeeding(false); return }
-        await supabase.from('compliance_items').insert(DEFAULT_ITEMS.map(i => ({ ...i, org_id: profile.org_id, status: 'pending' })))
+        const orgId = await getOrgId(supabase)
+        if (!orgId) { setSeeding(false); return }
+        await supabase.from('compliance_items').insert(DEFAULT_ITEMS.map(i => ({ ...i, org_id: orgId, status: 'pending' })))
         await loadData()
         setSeeding(false)
     }

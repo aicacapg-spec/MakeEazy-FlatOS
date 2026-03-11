@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { getOrgId } from '@/lib/utils/get-org-id'
 import { SkeletonTable } from '@/lib/components/ui'
 import { DownloadTemplateButton, ExportDataButton, BulkImportButton, MODULE_COLUMNS } from '@/lib/components/bulk-operations'
 
@@ -138,12 +139,10 @@ function VendorForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => 
         e.preventDefault()
         setLoading(true)
         const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) { setError('Not authenticated'); setLoading(false); return }
-        const { data: profile } = await supabase.from('users').select('org_id').eq('id', user.id).single()
-        if (!profile?.org_id) { setError('No org'); setLoading(false); return }
+        const orgId = await getOrgId(supabase)
+        if (!orgId) { setError('Organization not found'); setLoading(false); return }
         const { error: err } = await supabase.from('vendors').insert({
-            org_id: profile.org_id, name: form.name, category: form.category,
+            org_id: orgId, name: form.name, category: form.category,
             phone: form.phone || null, email: form.email || null, address: form.address || null,
         })
         if (err) { setError(err.message); setLoading(false); return }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { getOrgId } from '@/lib/utils/get-org-id'
 import { SkeletonTable } from '@/lib/components/ui'
 import { DownloadTemplateButton, ExportDataButton, BulkImportButton, MODULE_COLUMNS } from '@/lib/components/bulk-operations'
 import type { Flat } from '@/lib/types/database'
@@ -178,12 +179,10 @@ function ExpenseForm({ flats, onClose, onSaved }: { flats: Flat[]; onClose: () =
         e.preventDefault()
         setLoading(true)
         const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) { setError('Not authenticated'); setLoading(false); return }
-        const { data: profile } = await supabase.from('users').select('org_id').eq('id', user.id).single()
-        if (!profile?.org_id) { setError('No org'); setLoading(false); return }
+        const orgId = await getOrgId(supabase)
+        if (!orgId) { setError('Organization not found'); setLoading(false); return }
         const { error: err } = await supabase.from('expenses').insert({
-            org_id: profile.org_id, flat_id: form.flat_id || null, category: form.category,
+            org_id: orgId, flat_id: form.flat_id || null, category: form.category,
             description: form.description || null, amount: parseFloat(form.amount),
             date: form.date, is_recurring: form.is_recurring, is_capex: form.is_capex, remarks: form.remarks || null,
         })

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { getOrgId } from '@/lib/utils/get-org-id'
 import Link from 'next/link'
 import { SkeletonTable } from '@/lib/components/ui'
 import { logAudit } from '@/lib/utils/audit'
@@ -278,11 +279,9 @@ function GenerateDemandsModal({ flats, onClose, onSaved }: { flats: Flat[]; onCl
     useEffect(() => {
         async function loadSettings() {
             const supabase = createClient()
-            const { data: { user } } = await supabase.auth.getUser()
-            if (!user) return
-            const { data: profile } = await supabase.from('users').select('org_id').eq('id', user.id).single()
-            if (!profile?.org_id) return
-            const { data: org } = await supabase.from('organizations').select('settings').eq('id', profile.org_id).single()
+            const orgId = await getOrgId(supabase)
+            if (!orgId) return
+            const { data: org } = await supabase.from('organizations').select('settings').eq('id', orgId).single()
             const settings = (org?.settings as Record<string, unknown>) || {}
             const rules = (settings.billing_rules as Record<string, number>) || {}
             const dueDay = rules.rent_due_day || 5
@@ -324,16 +323,14 @@ function GenerateDemandsModal({ flats, onClose, onSaved }: { flats: Flat[]; onCl
         setLoading(true)
         setError(null)
         const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) { setError('Not authenticated'); setLoading(false); return }
-        const { data: profile } = await supabase.from('users').select('org_id').eq('id', user.id).single()
-        if (!profile?.org_id) { setError('No org'); setLoading(false); return }
+        const orgId = await getOrgId(supabase)
+        if (!orgId) { setError('Organization not found'); setLoading(false); return }
 
         // Check for existing demands to prevent duplicates
         const { data: existing } = await supabase
             .from('rent_demands')
             .select('flat_id')
-            .eq('org_id', profile.org_id)
+            .eq('org_id', orgId)
             .eq('billing_month', billingMonth)
         const existingFlatIds = new Set((existing || []).map(e => e.flat_id))
 
@@ -341,7 +338,7 @@ function GenerateDemandsModal({ flats, onClose, onSaved }: { flats: Flat[]; onCl
         const newFlats = occupiedFlats.filter(f => !existingFlatIds.has(f.id))
 
         const records = newFlats.map(f => ({
-            org_id: profile.org_id,
+            org_id: orgId,
             flat_id: f.id,
             billing_month: billingMonth,
             rent_amount: f.monthly_rent || 0,
@@ -467,15 +464,13 @@ function RecordPaymentModal({ flats, demands, onClose, onSaved }: {
         setLoading(true)
         setError(null)
         const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) { setError('Not authenticated'); setLoading(false); return }
-        const { data: profile } = await supabase.from('users').select('org_id').eq('id', user.id).single()
-        if (!profile?.org_id) { setError('No org'); setLoading(false); return }
+        const orgId = await getOrgId(supabase)
+        if (!orgId) { setError('Organization not found'); setLoading(false); return }
 
-        const receiptNum = await generateReceiptNumber(supabase, profile.org_id)
+        const receiptNum = await generateReceiptNumber(supabase, orgId)
 
         const { error: err } = await supabase.from('payments').insert({
-            org_id: profile.org_id,
+            org_id: orgId,
             flat_id: form.flat_id,
             demand_id: form.demand_id || null,
             receipt_number: receiptNum,

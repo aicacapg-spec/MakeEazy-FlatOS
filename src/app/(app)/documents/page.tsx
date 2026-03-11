@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { getOrgId } from '@/lib/utils/get-org-id'
 import Link from 'next/link'
 import { SkeletonTable } from '@/lib/components/ui'
 import type { Flat, Tenant } from '@/lib/types/database'
@@ -204,21 +205,19 @@ function UploadModal({ flats, tenants, onClose, onSaved }: { flats: Flat[]; tena
         setLoading(true)
         setError(null)
         const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) { setError('Not authenticated'); setLoading(false); return }
-        const { data: profile } = await supabase.from('users').select('org_id').eq('id', user.id).single()
-        if (!profile?.org_id) { setError('No org'); setLoading(false); return }
+        const orgId = await getOrgId(supabase)
+        if (!orgId) { setError('Organization not found'); setLoading(false); return }
 
         // Upload to Supabase Storage
         const fileExt = file.name.split('.').pop()
-        const path = `${profile.org_id}/${form.doc_type}/${Date.now()}.${fileExt}`
+        const path = `${orgId}/${form.doc_type}/${Date.now()}.${fileExt}`
         const { data: uploadData, error: upErr } = await supabase.storage.from('documents').upload(path, file, { upsert: true })
         if (upErr) { setError(`Upload failed: ${upErr.message}`); setLoading(false); return }
 
         const { data: { publicUrl } } = supabase.storage.from('documents').getPublicUrl(path)
 
         const { error: dbErr } = await supabase.from('documents').insert({
-            org_id: profile.org_id, flat_id: form.flat_id || null, tenant_id: form.tenant_id || null,
+            org_id: orgId, flat_id: form.flat_id || null, tenant_id: form.tenant_id || null,
             doc_type: form.doc_type, file_name: file.name, file_url: publicUrl || uploadData.path,
             file_size: file.size, mime_type: file.type, is_verified: false,
             expiry_date: form.expiry_date || null,

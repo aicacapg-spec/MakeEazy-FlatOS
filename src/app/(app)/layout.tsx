@@ -158,50 +158,69 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     const router = useRouter()
 
     const loadUser = useCallback(async () => {
-        const supabase = createClient()
-        const { data: { user: authUser } } = await supabase.auth.getUser()
+        try {
+            const supabase = createClient()
+            const { data: { user: authUser } } = await supabase.auth.getUser()
 
-        if (!authUser) {
-            setLoading(false)
-            return
-        }
+            if (!authUser) {
+                setLoading(false)
+                return
+            }
 
-        // Try to get profile from users table
-        const { data: profile } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', authUser.id)
-            .single()
-
-        if (profile) {
-            setUser(profile as UserProfile)
-
-            // Get org name
-            const { data: org } = await supabase
-                .from('organizations')
-                .select('name')
-                .eq('id', profile.org_id)
+            // Try to get profile from users table
+            const { data: profile } = await supabase
+                .from('users')
+                .select('*')
+                .eq('id', authUser.id)
                 .single()
-            if (org) setOrgName(org.name)
-        } else {
-            // Fallback: use auth metadata
+
+            if (profile) {
+                setUser(profile as UserProfile)
+
+                // Get org name
+                const { data: org } = await supabase
+                    .from('organizations')
+                    .select('name')
+                    .eq('id', profile.org_id)
+                    .single()
+                if (org) setOrgName(org.name)
+            } else {
+                // Fallback: use auth metadata
+                setUser({
+                    id: authUser.id,
+                    org_id: '',
+                    email: authUser.email || '',
+                    full_name: authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'User',
+                    phone: null,
+                    role: 'admin',
+                    avatar_url: null,
+                    is_active: true,
+                    last_login_at: null,
+                    created_at: authUser.created_at,
+                    updated_at: authUser.created_at,
+                })
+                setOrgName(authUser.user_metadata?.org_name || 'My Organization')
+            }
+        } catch (err) {
+            console.error('[FlatOS] Error loading user profile:', err)
+            // Set a basic fallback user so the app doesn't get stuck loading
             setUser({
-                id: authUser.id,
+                id: 'fallback',
                 org_id: '',
-                email: authUser.email || '',
-                full_name: authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'User',
+                email: '',
+                full_name: 'User',
                 phone: null,
                 role: 'admin',
                 avatar_url: null,
                 is_active: true,
                 last_login_at: null,
-                created_at: authUser.created_at,
-                updated_at: authUser.created_at,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
             })
-            setOrgName(authUser.user_metadata?.org_name || 'My Organization')
+            setOrgName('My Organization')
+        } finally {
+            setLoading(false)
         }
-
-        setLoading(false)
     }, [])
 
     useEffect(() => {

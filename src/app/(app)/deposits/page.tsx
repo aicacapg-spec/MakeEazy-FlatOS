@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import { SkeletonTable } from '@/lib/components/ui'
+import { DownloadTemplateButton, ExportDataButton, BulkImportButton, MODULE_COLUMNS } from '@/lib/components/bulk-operations'
 import type { Flat, Tenant } from '@/lib/types/database'
 
 interface Deposit {
@@ -65,7 +66,12 @@ export default function DepositsPage() {
                     <h1 className="page-title">Deposit Management</h1>
                     <p className="page-description">Track security deposits, refunds, and deductions for all flats</p>
                 </div>
-                <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>+ Record Deposit</button>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <DownloadTemplateButton moduleName="Deposits" columns={MODULE_COLUMNS.deposits as unknown as { key: string; label: string; required?: boolean; type?: 'text' | 'number' | 'date' | 'select'; options?: string[]; example?: string }[]} />
+                    <ExportDataButton moduleName="Deposits" columns={MODULE_COLUMNS.deposits as unknown as { key: string; label: string; required?: boolean; type?: 'text' | 'number' | 'date' | 'select'; options?: string[]; example?: string }[]} data={deposits as unknown as Record<string, unknown>[]} />
+                    <BulkImportButton moduleName="Deposits" tableName="deposits" columns={MODULE_COLUMNS.deposits as unknown as { key: string; label: string; required?: boolean; type?: 'text' | 'number' | 'date' | 'select'; options?: string[]; example?: string }[]} data={[]} onImportComplete={loadData} lookupMaps={{ flat_number: new Map(flats.map(f => [f.flat_number, f.id])) }} />
+                    <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>+ Record Deposit</button>
+                </div>
             </div>
 
             <div className="summary-cards">

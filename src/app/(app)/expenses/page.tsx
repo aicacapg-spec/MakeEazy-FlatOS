@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { SkeletonTable } from '@/lib/components/ui'
+import { DownloadTemplateButton, ExportDataButton, BulkImportButton, MODULE_COLUMNS } from '@/lib/components/bulk-operations'
 import type { Flat } from '@/lib/types/database'
 
 interface Expense {
@@ -67,7 +68,12 @@ export default function ExpensesPage() {
                     <h1 className="page-title">Expense Tracking</h1>
                     <p className="page-description">Track property maintenance, repairs, and operational expenses</p>
                 </div>
-                <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>+ Add Expense</button>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <DownloadTemplateButton moduleName="Expenses" columns={MODULE_COLUMNS.expenses as unknown as { key: string; label: string; required?: boolean; type?: 'text' | 'number' | 'date' | 'select'; options?: string[]; example?: string }[]} />
+                    <ExportDataButton moduleName="Expenses" columns={MODULE_COLUMNS.expenses as unknown as { key: string; label: string; required?: boolean; type?: 'text' | 'number' | 'date' | 'select'; options?: string[]; example?: string }[]} data={filtered as unknown as Record<string, unknown>[]} />
+                    <BulkImportButton moduleName="Expenses" tableName="expenses" columns={MODULE_COLUMNS.expenses as unknown as { key: string; label: string; required?: boolean; type?: 'text' | 'number' | 'date' | 'select'; options?: string[]; example?: string }[]} data={[]} onImportComplete={loadData} />
+                    <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>+ Add Expense</button>
+                </div>
             </div>
 
             <div className="summary-cards">

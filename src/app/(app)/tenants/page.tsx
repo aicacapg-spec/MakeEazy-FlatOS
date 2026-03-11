@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import { SkeletonTable } from '@/lib/components/ui'
+import { DownloadTemplateButton, ExportDataButton, BulkImportButton, MODULE_COLUMNS } from '@/lib/components/bulk-operations'
 import type { Tenant, Flat } from '@/lib/types/database'
 
 const KYC_CONFIG: Record<string, { bg: string; color: string; label: string }> = {
@@ -86,10 +87,15 @@ export default function TenantsPage() {
                     <h1 className="page-title">Tenant Management</h1>
                     <p className="page-description">Track tenants, KYC status, and onboarding progress</p>
                 </div>
-                <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-                    Add Tenant
-                </button>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <DownloadTemplateButton moduleName="Tenants" columns={MODULE_COLUMNS.tenants as unknown as { key: string; label: string; required?: boolean; type?: 'text' | 'number' | 'date' | 'select'; options?: string[]; example?: string }[]} />
+                    <ExportDataButton moduleName="Tenants" columns={MODULE_COLUMNS.tenants as unknown as { key: string; label: string; required?: boolean; type?: 'text' | 'number' | 'date' | 'select'; options?: string[]; example?: string }[]} data={filtered as unknown as Record<string, unknown>[]} />
+                    <BulkImportButton moduleName="Tenants" tableName="tenants" columns={MODULE_COLUMNS.tenants as unknown as { key: string; label: string; required?: boolean; type?: 'text' | 'number' | 'date' | 'select'; options?: string[]; example?: string }[]} data={[]} onImportComplete={loadData} lookupMaps={{ flat_number: new Map(flats.map(f => [f.flat_number, f.id])) }} />
+                    <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                        Add Tenant
+                    </button>
+                </div>
             </div>
 
             {/* Summary Cards */}
@@ -192,7 +198,7 @@ export default function TenantsPage() {
                                                 </Link>
                                                 {t.email && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t.email}</div>}
                                             </td>
-                                            <td><span style={{ fontWeight: 600 }}>{t.flat_number}</span></td>
+                                            <td><Link href={`/flats/${t.flat_id}`} style={{ fontWeight: 600, color: 'var(--color-primary)', textDecoration: 'none' }}>{t.flat_number}</Link></td>
                                             <td>{t.is_primary ? '✭ Primary' : 'Co-licensee'}</td>
                                             <td style={{ color: 'var(--text-secondary)' }}>{t.phone || '—'}</td>
                                             <td><span className="badge" style={{ background: kyc.bg, color: kyc.color }}>{kyc.label}</span></td>

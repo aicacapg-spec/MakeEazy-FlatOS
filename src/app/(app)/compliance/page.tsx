@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { SkeletonTable } from '@/lib/components/ui'
+import { DownloadTemplateButton, ExportDataButton, BulkImportButton, MODULE_COLUMNS } from '@/lib/components/bulk-operations'
 
 interface ComplianceItem {
     id: string; org_id: string; name: string; category: string; responsible_role: string;
@@ -90,7 +91,10 @@ export default function CompliancePage() {
                     <h1 className="page-title">Compliance Tracker</h1>
                     <p className="page-description">Track regulatory, legal, and financial compliance items</p>
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <DownloadTemplateButton moduleName="Compliance" columns={MODULE_COLUMNS.compliance as unknown as { key: string; label: string; required?: boolean; type?: 'text' | 'number' | 'date' | 'select'; options?: string[]; example?: string }[]} />
+                    <ExportDataButton moduleName="Compliance" columns={MODULE_COLUMNS.compliance as unknown as { key: string; label: string; required?: boolean; type?: 'text' | 'number' | 'date' | 'select'; options?: string[]; example?: string }[]} data={filtered as unknown as Record<string, unknown>[]} />
+                    <BulkImportButton moduleName="Compliance" tableName="compliance_items" columns={MODULE_COLUMNS.compliance as unknown as { key: string; label: string; required?: boolean; type?: 'text' | 'number' | 'date' | 'select'; options?: string[]; example?: string }[]} data={[]} onImportComplete={loadData} />
                     {items.length === 0 && (
                         <button className="btn btn-secondary" onClick={seedDefaults} disabled={seeding}>
                             {seeding ? 'Seeding...' : '🌱 Load Default Items'}

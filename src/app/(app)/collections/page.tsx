@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import Link from 'next/link'
 import { SkeletonTable } from '@/lib/components/ui'
 import type { Flat } from '@/lib/types/database'
 
@@ -199,7 +200,7 @@ export default function CollectionsPage() {
                                         const st = STATUS_CONFIG[d.status] || STATUS_CONFIG.pending
                                         return (
                                             <tr key={d.id}>
-                                                <td style={{ fontWeight: 700, color: 'var(--color-primary)' }}>Flat {d.flat_number}</td>
+                                                <td><Link href={`/flats/${d.flat_id}`} style={{ fontWeight: 700, color: 'var(--color-primary)', textDecoration: 'none' }}>Flat {d.flat_number}</Link></td>
                                                 <td>{new Date(d.billing_month + '-01').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}</td>
                                                 <td>{fmt(d.rent_amount)}</td>
                                                 <td>{fmt(d.maintenance_amount)}</td>
@@ -233,7 +234,7 @@ export default function CollectionsPage() {
                                     {filteredPayments.map(p => (
                                         <tr key={p.id}>
                                             <td style={{ fontWeight: 600, color: 'var(--color-primary)' }}>{p.receipt_number || '—'}</td>
-                                            <td>Flat {p.flat_number}</td>
+                                            <td><Link href={`/flats/${p.flat_id}`} style={{ textDecoration: 'none', color: 'var(--color-primary)', fontWeight: 600 }}>Flat {p.flat_number}</Link></td>
                                             <td style={{ fontSize: 13 }}>{new Date(p.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
                                             <td style={{ fontWeight: 700, color: '#059669' }}>{fmt(p.amount)}</td>
                                             <td><span className="badge badge-info">{MODES[p.mode] || p.mode}</span></td>

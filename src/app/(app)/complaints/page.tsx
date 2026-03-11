@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import { SkeletonTable } from '@/lib/components/ui'
+import { DownloadTemplateButton, ExportDataButton, BulkImportButton, MODULE_COLUMNS } from '@/lib/components/bulk-operations'
 import type { Flat } from '@/lib/types/database'
 
 interface Complaint {
@@ -71,7 +72,12 @@ export default function ComplaintsPage() {
                     <h1 className="page-title">Complaint Management</h1>
                     <p className="page-description">Track maintenance requests, complaints, and resolution status</p>
                 </div>
-                <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>+ Log Complaint</button>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <DownloadTemplateButton moduleName="Complaints" columns={MODULE_COLUMNS.complaints as unknown as { key: string; label: string; required?: boolean; type?: 'text' | 'number' | 'date' | 'select'; options?: string[]; example?: string }[]} />
+                    <ExportDataButton moduleName="Complaints" columns={MODULE_COLUMNS.complaints as unknown as { key: string; label: string; required?: boolean; type?: 'text' | 'number' | 'date' | 'select'; options?: string[]; example?: string }[]} data={filtered as unknown as Record<string, unknown>[]} />
+                    <BulkImportButton moduleName="Complaints" tableName="complaints" columns={MODULE_COLUMNS.complaints as unknown as { key: string; label: string; required?: boolean; type?: 'text' | 'number' | 'date' | 'select'; options?: string[]; example?: string }[]} data={[]} onImportComplete={loadData} lookupMaps={{ flat_number: new Map(flats.map(f => [f.flat_number, f.id])) }} />
+                    <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>+ Log Complaint</button>
+                </div>
             </div>
 
             <div className="summary-cards">

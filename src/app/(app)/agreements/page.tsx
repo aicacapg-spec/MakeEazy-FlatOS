@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import { SkeletonTable } from '@/lib/components/ui'
+import { DownloadTemplateButton, ExportDataButton, BulkImportButton, MODULE_COLUMNS } from '@/lib/components/bulk-operations'
 import type { Agreement, Flat, Tenant } from '@/lib/types/database'
 
 const STATUS_CONFIG: Record<string, { bg: string; color: string; label: string }> = {
@@ -94,10 +95,15 @@ export default function AgreementsPage() {
                     <h1 className="page-title">Agreement Management</h1>
                     <p className="page-description">Track agreements, renewals, and compliance for all flats</p>
                 </div>
-                <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-                    New Agreement
-                </button>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <DownloadTemplateButton moduleName="Agreements" columns={MODULE_COLUMNS.agreements as unknown as { key: string; label: string; required?: boolean; type?: 'text' | 'number' | 'date' | 'select'; options?: string[]; example?: string }[]} />
+                    <ExportDataButton moduleName="Agreements" columns={MODULE_COLUMNS.agreements as unknown as { key: string; label: string; required?: boolean; type?: 'text' | 'number' | 'date' | 'select'; options?: string[]; example?: string }[]} data={filtered as unknown as Record<string, unknown>[]} />
+                    <BulkImportButton moduleName="Agreements" tableName="agreements" columns={MODULE_COLUMNS.agreements as unknown as { key: string; label: string; required?: boolean; type?: 'text' | 'number' | 'date' | 'select'; options?: string[]; example?: string }[]} data={[]} onImportComplete={loadData} lookupMaps={{ flat_number: new Map(flats.map(f => [f.flat_number, f.id])) }} />
+                    <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                        New Agreement
+                    </button>
+                </div>
             </div>
 
             {/* Summary Cards */}

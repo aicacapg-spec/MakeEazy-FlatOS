@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import { SkeletonGrid } from '@/lib/components/ui'
+import { DownloadTemplateButton, ExportDataButton, BulkImportButton, MODULE_COLUMNS } from '@/lib/components/bulk-operations'
 import type { Flat } from '@/lib/types/database'
 
 // Status badge color mapping
@@ -83,10 +84,15 @@ export default function FlatsPage() {
                     <h1 className="page-title">Flat Management</h1>
                     <p className="page-description">Manage all flats, occupancy, and details for Priya Mahalakshmi Towers</p>
                 </div>
-                <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-                    Add Flat
-                </button>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <DownloadTemplateButton moduleName="Flats" columns={MODULE_COLUMNS.flats as unknown as { key: string; label: string; required?: boolean; type?: 'text' | 'number' | 'date' | 'select'; options?: string[]; example?: string }[]} />
+                    <ExportDataButton moduleName="Flats" columns={MODULE_COLUMNS.flats as unknown as { key: string; label: string; required?: boolean; type?: 'text' | 'number' | 'date' | 'select'; options?: string[]; example?: string }[]} data={filteredFlats as unknown as Record<string, unknown>[]} />
+                    <BulkImportButton moduleName="Flats" tableName="flats" columns={MODULE_COLUMNS.flats as unknown as { key: string; label: string; required?: boolean; type?: 'text' | 'number' | 'date' | 'select'; options?: string[]; example?: string }[]} data={[]} onImportComplete={loadFlats} />
+                    <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                        Add Flat
+                    </button>
+                </div>
             </div>
 
             {/* Summary Cards */}

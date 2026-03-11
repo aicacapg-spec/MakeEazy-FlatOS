@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { SkeletonPage } from '@/lib/components/ui'
+import { KYCPreviewModal } from '@/lib/components/bulk-operations'
 import type { Tenant, Flat, Agreement } from '@/lib/types/database'
 
 const KYC_CONFIG: Record<string, { bg: string; color: string; label: string }> = {
@@ -38,6 +39,7 @@ export default function TenantDetailPage() {
     const [loading, setLoading] = useState(true)
     const [activeTab, setActiveTab] = useState('Profile')
     const [editing, setEditing] = useState(false)
+    const [previewDoc, setPreviewDoc] = useState<Doc | null>(null)
     const [editForm, setEditForm] = useState<Record<string, string>>({})
     const [saving, setSaving] = useState(false)
 
@@ -119,6 +121,7 @@ export default function TenantDetailPage() {
     const status = STATUS_CONFIG[tenant.status] || STATUS_CONFIG.active
 
     return (
+        <>
         <div>
             {/* Header */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
@@ -340,7 +343,7 @@ export default function TenantDetailPage() {
                                                     <span className="badge" style={{ background: d.is_verified ? '#ecfdf5' : '#fffbeb', color: d.is_verified ? '#059669' : '#d97706', fontSize: 11 }}>{d.is_verified ? '✓ Verified' : '⏳ Pending'}</span>
                                                 </div>
                                             </div>
-                                            <a href={d.file_url} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm" style={{ flexShrink: 0 }}>View ↗</a>
+                                            <button onClick={() => setPreviewDoc(d)} className="btn btn-ghost btn-sm" style={{ flexShrink: 0 }}>👁️ View</button>
                                         </div>
                                     )
                                 })}
@@ -445,6 +448,16 @@ export default function TenantDetailPage() {
                     </div>
                 )
             }
-        </div >
+        </div>
+
+            {/* KYC Document Preview Modal */}
+            {previewDoc && tenant && (
+                <KYCPreviewModal
+                    document={previewDoc}
+                    tenantName={tenant.full_name}
+                    onClose={() => setPreviewDoc(null)}
+                />
+            )}
+        </>    
     )
 }

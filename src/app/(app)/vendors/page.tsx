@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { SkeletonTable } from '@/lib/components/ui'
+import { DownloadTemplateButton, ExportDataButton, BulkImportButton, MODULE_COLUMNS } from '@/lib/components/bulk-operations'
 
 interface Vendor {
     id: string; org_id: string; name: string; category: string; phone: string | null;
@@ -44,7 +45,12 @@ export default function VendorsPage() {
                     <h1 className="page-title">Vendor Directory</h1>
                     <p className="page-description">Manage service providers and maintenance vendors</p>
                 </div>
-                <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>+ Add Vendor</button>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <DownloadTemplateButton moduleName="Vendors" columns={MODULE_COLUMNS.vendors as unknown as { key: string; label: string; required?: boolean; type?: 'text' | 'number' | 'date' | 'select'; options?: string[]; example?: string }[]} />
+                    <ExportDataButton moduleName="Vendors" columns={MODULE_COLUMNS.vendors as unknown as { key: string; label: string; required?: boolean; type?: 'text' | 'number' | 'date' | 'select'; options?: string[]; example?: string }[]} data={filtered as unknown as Record<string, unknown>[]} />
+                    <BulkImportButton moduleName="Vendors" tableName="vendors" columns={MODULE_COLUMNS.vendors as unknown as { key: string; label: string; required?: boolean; type?: 'text' | 'number' | 'date' | 'select'; options?: string[]; example?: string }[]} data={[]} onImportComplete={loadData} />
+                    <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>+ Add Vendor</button>
+                </div>
             </div>
 
             <div className="summary-cards">

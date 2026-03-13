@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { getOrgId } from '@/lib/utils/get-org-id'
+import { createAgreementAction } from '@/app/actions/agreements'
 import Link from 'next/link'
 import { SkeletonTable } from '@/lib/components/ui'
 import { DownloadTemplateButton, ExportDataButton, BulkImportButton, MODULE_COLUMNS } from '@/lib/components/bulk-operations'
@@ -305,28 +306,23 @@ function AddAgreementModal({ flats, tenants, onClose, onSaved }: {
         setLoading(true)
         setError(null)
 
-        const supabase = createClient()
-        const orgId = await getOrgId(supabase)
-        if (!orgId) { setError('Organization not found'); setLoading(false); return }
-
-        const { error: err } = await supabase.from('agreements').insert({
-            org_id: orgId,
+        const result = await createAgreementAction({
             flat_id: form.flat_id,
-            tenant_id: form.tenant_id || null,
+            tenant_id: form.tenant_id || undefined,
             agreement_type: form.agreement_type,
             start_date: form.start_date,
             end_date: form.end_date,
-            rent_amount: parseFloat(form.rent_amount) || 0,
-            maintenance_amount: parseFloat(form.maintenance_amount) || 0,
-            deposit_amount: parseFloat(form.deposit_amount) || 0,
-            lock_in_months: parseInt(form.lock_in_months) || 6,
-            notice_period_months: parseInt(form.notice_period_months) || 1,
-            escalation_percent: parseFloat(form.escalation_percent) || 5,
-            replacement_charge: parseFloat(form.replacement_charge) || 0,
-            status: form.status as Agreement['status'],
+            rent_amount: form.rent_amount,
+            maintenance_amount: form.maintenance_amount,
+            deposit_amount: form.deposit_amount,
+            lock_in_months: form.lock_in_months,
+            notice_period_months: form.notice_period_months,
+            escalation_percent: form.escalation_percent,
+            replacement_charge: form.replacement_charge,
+            status: form.status,
         })
 
-        if (err) { setError(err.message); setLoading(false); return }
+        if (!result.success) { setError(result.error || 'Failed to create agreement'); setLoading(false); return }
         onSaved()
     }
 
@@ -432,7 +428,7 @@ function AddAgreementModal({ flats, tenants, onClose, onSaved }: {
                             </div>
                             <div className="form-group">
                                 <label className="form-label">Annual Escalation (%)</label>
-                                <input className="form-input" type="number" value={form.escalation_percent} onChange={e => update('escalation_percent', e.target.value)} />
+                                <input className="form-input" type="number" min="0" max="50" step="0.5" value={form.escalation_percent} onChange={e => update('escalation_percent', e.target.value)} />
                             </div>
                         </div>
                     )}
@@ -441,12 +437,12 @@ function AddAgreementModal({ flats, tenants, onClose, onSaved }: {
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                             <div className="form-group">
                                 <label className="form-label">Lock-in Period (months)</label>
-                                <input className="form-input" type="number" value={form.lock_in_months} onChange={e => update('lock_in_months', e.target.value)} />
+                                <input className="form-input" type="number" min="0" max="60" value={form.lock_in_months} onChange={e => update('lock_in_months', e.target.value)} />
                                 <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>As per UVPL master format</div>
                             </div>
                             <div className="form-group">
                                 <label className="form-label">Notice Period (months)</label>
-                                <input className="form-input" type="number" value={form.notice_period_months} onChange={e => update('notice_period_months', e.target.value)} />
+                                <input className="form-input" type="number" min="1" max="12" value={form.notice_period_months} onChange={e => update('notice_period_months', e.target.value)} />
                             </div>
                             <div className="form-group" style={{ gridColumn: 'span 2' }}>
                                 <label className="form-label">Replacement Charge (₹)</label>

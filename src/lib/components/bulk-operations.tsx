@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import * as XLSX from 'xlsx'
 import { createClient } from '@/lib/supabase/client'
 
@@ -300,63 +300,104 @@ function ImportModal({ moduleName, tableName, columns, onClose, onImportComplete
 
 // ─── KYC Document Preview Modal ───────────────────────────
 export function KYCPreviewModal({ document, tenantName, onClose }: {
-    document: { file_name: string; doc_type: string; file_url: string; is_verified: boolean; created_at: string }
+    document: { id?: string; file_name: string; doc_type: string; file_url: string; is_verified: boolean; created_at: string }
     tenantName: string; onClose: () => void
 }) {
+    const [showFull, setShowFull] = useState(false)
+    const [signedUrl, setSignedUrl] = useState<string | null>(null)
+    const [imgError, setImgError] = useState(false)
+
     const isAadhaar = document.file_name.toLowerCase().includes('aadhaar')
     const isPan = document.file_name.toLowerCase().includes('pan')
     const docLabel = isAadhaar ? 'Aadhaar Card' : isPan ? 'PAN Card' : document.doc_type
-    const dummyNumber = isAadhaar ? 'XXXX XXXX 1234' : isPan ? 'ABCDE1234F' : ''
+    const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(document.file_name)
+    const isPdf = /\.pdf$/i.test(document.file_name)
+
+    // Load actual signed URL on mount
+    useEffect(() => {
+        async function loadUrl() {
+            const storagePath = document.file_url.includes('/storage/')
+                ? document.file_url.split('/storage/v1/object/public/documents/')[1] || document.file_url
+                : document.file_url
+            try {
+                const res = await fetch(`/api/documents/signed-url?path=${encodeURIComponent(storagePath)}`)
+                const json = await res.json()
+                if (json.url) setSignedUrl(json.url)
+            } catch { /* ignore */ }
+        }
+        loadUrl()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
 
     return (
         <div className="modal-overlay" onClick={onClose}>
-            <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+            <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 600 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
                     <h2 className="modal-title" style={{ margin: 0 }}>{docLabel} Preview</h2>
                     <button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button>
                 </div>
 
-                {/* Visual Document Preview */}
-                <div style={{
-                    background: isAadhaar ? 'linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%)' : isPan ? 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)' : 'linear-gradient(135deg, #475569 0%, #64748b 100%)',
-                    borderRadius: 12, padding: '28px 24px', color: 'white', position: 'relative', overflow: 'hidden',
-                }}>
-                    {/* Watermark */}
-                    <div style={{ position: 'absolute', top: 8, right: 12, fontSize: 10, opacity: 0.5, fontWeight: 600 }}>
-                        {isAadhaar ? 'भारत सरकार | GOVERNMENT OF INDIA' : isPan ? 'INCOME TAX DEPARTMENT' : 'DOCUMENT'}
-                    </div>
-
-                    {/* Logo area */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-                        <div style={{ width: 48, height: 48, borderRadius: 8, background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>
-                            {isAadhaar ? '🪪' : isPan ? '🏛️' : '📄'}
+                {/* Masked Card View (default) */}
+                {!showFull && (
+                    <div style={{
+                        background: isAadhaar ? 'linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%)' : isPan ? 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)' : 'linear-gradient(135deg, #475569 0%, #64748b 100%)',
+                        borderRadius: 12, padding: '28px 24px', color: 'white', position: 'relative', overflow: 'hidden',
+                    }}>
+                        <div style={{ position: 'absolute', top: 8, right: 12, fontSize: 10, opacity: 0.5, fontWeight: 600 }}>
+                            {isAadhaar ? 'भारत सरकार | GOVERNMENT OF INDIA' : isPan ? 'INCOME TAX DEPARTMENT' : 'DOCUMENT'}
                         </div>
-                        <div>
-                            <div style={{ fontWeight: 800, fontSize: 16 }}>{isAadhaar ? 'Aadhaar' : isPan ? 'PAN Card' : docLabel}</div>
-                            <div style={{ fontSize: 11, opacity: 0.7 }}>{isAadhaar ? 'Unique Identification Authority of India' : isPan ? 'Permanent Account Number' : 'Verified Document'}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+                            <div style={{ width: 48, height: 48, borderRadius: 8, background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>
+                                {isAadhaar ? '🪪' : isPan ? '🏛️' : '📄'}
+                            </div>
+                            <div>
+                                <div style={{ fontWeight: 800, fontSize: 16 }}>{isAadhaar ? 'Aadhaar' : isPan ? 'PAN Card' : docLabel}</div>
+                                <div style={{ fontSize: 11, opacity: 0.7 }}>{isAadhaar ? 'Unique Identification Authority of India' : isPan ? 'Permanent Account Number' : 'Verified Document'}</div>
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 16 }}>
+                            <div style={{ width: 80, height: 96, borderRadius: 8, background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, flexShrink: 0 }}>👤</div>
+                            <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: 12, opacity: 0.6, textTransform: 'uppercase', letterSpacing: 1 }}>Name</div>
+                                <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>{tenantName}</div>
+                                <div style={{ fontSize: 12, opacity: 0.6, textTransform: 'uppercase', letterSpacing: 1 }}>{isAadhaar ? 'Aadhaar Number' : isPan ? 'PAN Number' : 'Document ID'}</div>
+                                <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: 3, fontFamily: 'monospace' }}>
+                                    {isAadhaar ? 'XXXX XXXX 1234' : isPan ? 'ABCDE1234F' : '—'}
+                                </div>
+                            </div>
+                        </div>
+                        <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.2)', display: 'flex', justifyContent: 'space-between', fontSize: 11, opacity: 0.6 }}>
+                            <span>File: {document.file_name}</span>
+                            <span>Uploaded: {new Date(document.created_at).toLocaleDateString('en-IN')}</span>
                         </div>
                     </div>
+                )}
 
-                    {/* Photo placeholder + Details */}
-                    <div style={{ display: 'flex', gap: 16 }}>
-                        <div style={{ width: 80, height: 96, borderRadius: 8, background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, flexShrink: 0 }}>👤</div>
-                        <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 12, opacity: 0.6, textTransform: 'uppercase', letterSpacing: 1 }}>Name</div>
-                            <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>{tenantName}</div>
-                            <div style={{ fontSize: 12, opacity: 0.6, textTransform: 'uppercase', letterSpacing: 1 }}>{isAadhaar ? 'Aadhaar Number' : isPan ? 'PAN Number' : 'Document ID'}</div>
-                            <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: 3, fontFamily: 'monospace' }}>{dummyNumber}</div>
-                        </div>
+                {/* Full Document View (actual image/PDF) */}
+                {showFull && signedUrl && (
+                    <div style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid #e2e8f0', background: '#f8fafc', minHeight: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {isImage && !imgError ? (
+                            <img src={signedUrl} alt={document.file_name} style={{ maxWidth: '100%', maxHeight: 500 }} onError={() => setImgError(true)} />
+                        ) : isPdf ? (
+                            <iframe src={signedUrl} style={{ width: '100%', height: 450, border: 'none' }} title={document.file_name} />
+                        ) : (
+                            <div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>
+                                <div style={{ fontSize: 48, marginBottom: 12 }}>📄</div>
+                                <div style={{ fontWeight: 600 }}>{document.file_name}</div>
+                                <div style={{ fontSize: 13, marginTop: 8 }}>Preview not available — use Download</div>
+                            </div>
+                        )}
                     </div>
+                )}
 
-                    {/* Bottom bar */}
-                    <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.2)', display: 'flex', justifyContent: 'space-between', fontSize: 11, opacity: 0.6 }}>
-                        <span>File: {document.file_name}</span>
-                        <span>Uploaded: {new Date(document.created_at).toLocaleDateString('en-IN')}</span>
+                {showFull && !signedUrl && (
+                    <div style={{ padding: 40, textAlign: 'center', color: '#64748b', background: '#f8fafc', borderRadius: 12, border: '1px solid #e2e8f0' }}>
+                        <div style={{ fontSize: 13 }}>Loading document...</div>
                     </div>
-                </div>
+                )}
 
                 {/* Status & Actions */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, flexWrap: 'wrap', gap: 8 }}>
                     <span className="badge" style={{
                         background: document.is_verified ? '#ecfdf5' : '#fffbeb',
                         color: document.is_verified ? '#059669' : '#d97706',
@@ -365,6 +406,19 @@ export function KYCPreviewModal({ document, tenantName, onClose }: {
                         {document.is_verified ? '✓ Verified' : '⏳ Pending Verification'}
                     </span>
                     <div style={{ display: 'flex', gap: 8 }}>
+                        <button className="btn btn-ghost btn-sm" onClick={() => setShowFull(prev => !prev)}>
+                            {showFull ? '🔒 Mask View' : '👁️ Show Full'}
+                        </button>
+                        {signedUrl && (
+                            <button className="btn btn-ghost btn-sm" style={{ color: '#6366f1' }}
+                                onClick={() => {
+                                    const link = window.document.createElement('a')
+                                    link.href = signedUrl
+                                    link.download = document.file_name
+                                    link.click()
+                                }}
+                            >⬇ Download</button>
+                        )}
                         <button className="btn btn-ghost btn-sm" onClick={() => window.print()}>🖨️ Print</button>
                         <button className="btn btn-primary btn-sm" onClick={onClose}>Close</button>
                     </div>

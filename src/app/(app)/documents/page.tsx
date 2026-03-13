@@ -175,8 +175,21 @@ export default function DocumentsPage() {
                                             </td>
                                             <td>
                                                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                                                    <a href={`/api/documents/signed-url?path=${encodeURIComponent(d.file_url.includes('/storage/') ? d.file_url.split('/storage/v1/object/public/documents/')[1] || d.file_url : d.file_url)}`}
+                                                    <a href={`/api/documents/signed-url?redirect=1&path=${encodeURIComponent(d.file_url.includes('/storage/') ? d.file_url.split('/storage/v1/object/public/documents/')[1] || d.file_url : d.file_url)}`}
                                                         target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm">View ↗</a>
+                                                    <button className="btn btn-ghost btn-sm" style={{ color: '#6366f1' }}
+                                                        onClick={async () => {
+                                                            const storagePath = d.file_url.includes('/storage/') ? d.file_url.split('/storage/v1/object/public/documents/')[1] || d.file_url : d.file_url
+                                                            const res = await fetch(`/api/documents/signed-url?path=${encodeURIComponent(storagePath)}`)
+                                                            const json = await res.json()
+                                                            if (json.url) {
+                                                                const link = document.createElement('a')
+                                                                link.href = json.url
+                                                                link.download = d.file_name
+                                                                link.click()
+                                                            }
+                                                        }}
+                                                    >⬇ Download</button>
                                                     {!d.is_verified && (
                                                         <button className="btn btn-ghost btn-sm" style={{ color: '#059669' }}
                                                             onClick={async () => {

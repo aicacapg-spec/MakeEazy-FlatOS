@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { getOrgId } from '@/lib/utils/get-org-id'
 import { generateRentDemandsAction, recordPaymentAction } from '@/app/actions/payments'
+import { generateRentReceiptHTML } from '@/lib/templates/agreement-template'
 import Link from 'next/link'
 import { SkeletonTable } from '@/lib/components/ui'
 import type { Flat } from '@/lib/types/database'
@@ -22,6 +23,7 @@ interface Payment {
     date: string; mode: string; reference_number: string | null;
     rent_component: number; maintenance_component: number; late_fee_component: number;
     remarks: string | null; created_at: string;
+    flat_number?: string; tenant_name?: string;
 }
 
 const STATUS_CONFIG: Record<string, { bg: string; color: string; label: string }> = {
@@ -229,7 +231,7 @@ export default function CollectionsPage() {
                             <table className="data-table">
                                 <thead>
                                     <tr>
-                                        <th>Receipt #</th><th>Flat</th><th>Date</th><th>Amount</th><th>Mode</th><th>Ref.</th><th>Rent</th><th>Maint.</th>
+                                        <th>Receipt #</th><th>Flat</th><th>Date</th><th>Amount</th><th>Mode</th><th>Ref.</th><th>Rent</th><th>Maint.</th><th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -243,6 +245,31 @@ export default function CollectionsPage() {
                                             <td style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{p.reference_number || '—'}</td>
                                             <td style={{ fontSize: 13 }}>{fmt(p.rent_component)}</td>
                                             <td style={{ fontSize: 13 }}>{fmt(p.maintenance_component)}</td>
+                                            <td>
+                                                <button className="btn btn-ghost btn-sm" style={{ fontSize: 12 }}
+                                                    onClick={() => {
+                                                        const flat = flats.find(f => f.id === p.flat_id)
+                                                        const html = generateRentReceiptHTML({
+                                                            receiptNumber: p.receipt_number || 'N/A',
+                                                            date: p.date,
+                                                            tenantName: p.tenant_name || 'Tenant',
+                                                            flatNumber: flat?.flat_number || p.flat_number || '—',
+                                                            propertyName: 'Property',
+                                                            month: p.demand_id ? (demands.find(d => d.id === p.demand_id)?.billing_month || '') : new Date(p.date).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }),
+                                                            rentAmount: p.rent_component || 0,
+                                                            maintenanceAmount: p.maintenance_component || 0,
+                                                            lateFee: Math.max(0, p.amount - (p.rent_component || 0) - (p.maintenance_component || 0)),
+                                                            totalPaid: p.amount,
+                                                            paymentMode: p.mode || 'cash',
+                                                            referenceNumber: p.reference_number || '',
+                                                            landlordName: 'Licensor',
+                                                            landlordPAN: '',
+                                                        })
+                                                        const win = window.open('', '_blank')
+                                                        if (win) { win.document.write(html); win.document.close() }
+                                                    }}
+                                                >🧾 Receipt</button>
+                                            </td>
                                         </tr>
                                     ))}
                                 </tbody>

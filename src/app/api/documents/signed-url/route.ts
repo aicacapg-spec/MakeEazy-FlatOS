@@ -5,7 +5,8 @@ import { getOrgId } from '@/lib/utils/get-org-id'
 /**
  * GET /api/documents/signed-url?path=org-id/doc-type/filename
  * Returns a short-lived signed URL for a private document.
- * Validates org membership before issuing the URL.
+ * If ?redirect=1 is set, redirects directly to the signed URL.
+ * Otherwise returns JSON with { url, expiresIn }.
  */
 export async function GET(request: NextRequest) {
     try {
@@ -42,6 +43,12 @@ export async function GET(request: NextRequest) {
                 { error: error?.message || 'Could not generate signed URL' },
                 { status: 500 }
             )
+        }
+
+        // If redirect=1, redirect to the signed URL directly
+        const shouldRedirect = request.nextUrl.searchParams.get('redirect') === '1'
+        if (shouldRedirect) {
+            return NextResponse.redirect(data.signedUrl)
         }
 
         return NextResponse.json({ url: data.signedUrl, expiresIn: 3600 })
